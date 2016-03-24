@@ -1,0 +1,8 @@
+ngsParalog
+*.o
+*.d
+/Debug/
+*.cproject
+*.project
+/Release/
+
