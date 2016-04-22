@@ -20,7 +20,13 @@
 
   mod by tyler 16 Feb 2015
   1) added "fail" pointer to findmax_bfgs function as a flag to return optimization failure info to calling function
- */
+
+  mod by tyler 5 Oct 2015
+  1) changed 'task', 'csave', and 'word' from char arrays to std::string variables.
+  2) switched from C to C++ header files.
+  3) initialized tu, tl, ibd upon declaration.
+  4) fixed some minor printing issues.
+*/
 
 /*
 these three parameters affect precision of optimization:
@@ -59,12 +65,12 @@ pgtol is size of gradient on exit
   lowbound= lower bounds
   upbound = upper bounds
   nbd,noisy   = see above
-  
+
  */
 
-double findmax_bfgs(int numpars, double *invec, const void *dats, double (*fun)(const double x[], const void*), 
+double findmax_bfgs(int numpars, double *invec, const void *dats, double (*fun)(const double x[], const void*),
 	void (*dfun)(const double x[], double y[], const void*),
-	double *lowbound, double *upbound, int *nbd, int noisy, unsigned int* fail);
+	double *lowbound, double *upbound, int *nbd, int noisy, int* fail);
 
 
 /*
@@ -76,7 +82,7 @@ double findmax_bfgs(int numpars, double *invec,const void*dats, double (*fun)(co
 
 /*
 void getgradient(int npar, const double invec[],double outvec[],
-		 const void*dats,double(*func)(const double [],const void*), 
+		 const void*dats,double(*func)(const double [],const void*),
 		 const double* lowbound, const double* upbound);
 */
 #endif /* BFGS_H_ */

@@ -122,8 +122,12 @@ template<class T> void Matrix<T>::allocate (size_t row, size_t col, T val)
 template <class T> Matrix<T>::Matrix(const Matrix<T>& oldmat)
 	: ncol(oldmat.ncol),
 	  nrow(oldmat.nrow),
-	  nelem(oldmat.nelem)
+	  nelem(oldmat.nelem),
+	  data(0),
+	  _subncol(oldmat._subncol),
+	  _subnrow(oldmat._subnrow)
 {
+	data = new T* [nrow];
 	size_t i = 0;
 	size_t j = 0;
 	for(i = 0; i < nrow; ++i)

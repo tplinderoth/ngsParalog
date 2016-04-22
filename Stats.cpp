@@ -1,61 +1,167 @@
-// Like.cpp
+/*
+ * stats.cpp
+ */
 
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
-#include <time.h>
 #include <math.h>
 #include <sys/stat.h>
-#include "optim.h"
-#include "Like.h"
+#include <time.h>
 #include "parsePileup.h"
-//#include <iostream> // debug
+#include "Stats.h"
+#include "bfgs.h"
+#include <iostream> // debug
 
-// negLogfn is the main likelihood function
-double Like::negLogfn (const double para [], const void *generic_dat)
+double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], const void*), void (*dfn)(const double x[], double y[], const void*), int islog, int* status)
 {
-	// para[0] = alternate allele frequency; para[1] = admixture proportion
+	bool weightcount = true;
+	double like;
+	int i = 0;
+	*status = 0;
 
-	const FunData* fnvals = static_cast<const FunData*>(generic_dat);
-	const Pileup* pile = static_cast<const Pileup*>(fnvals->sitedat);
+	// find MLE for f frequency under the null hypothesis
+
+	// use the sample alternate allele frequency as a starting point
+	null->par[0] = mafguess(static_cast<Pileup*>(null->data), weightcount);
+	like = findmax_bfgs(null->getDim(), null->par, null, fn, dfn, null->lowbounds(), null->upbounds(), null->numbounds(), null->verblevel(), null->fail());
+
+	// check for failure of guessed maf start point optimization
+	if (null->isfail())
+	{
+		null->multiOptim(fn, dfn);
+		// check for optimization failure at multiple start points
+		if (null->isfail())
+		{
+			fprintf(stderr, "Null optimization failed. ");
+			*status = 1;
+			return 0.0;
+		}
+	}
+	else
+	{
+		null->setllh() = like; //set
+		for (i=0; i < null->getDim(); ++i)
+			null->setmlparam(i, null->par[i]);
+	}
+
+	// find MLE for f and m under the alternative hypothesis
+
+	// try multiple arbitrary start points
+	alt->multiOptim(fn, dfn);
+
+	// check for optimization failure at multiple start points
+	if (alt->isfail())
+	{
+		*status = 1;
+		alt->setllh() = 1.0/0.0;
+		*(alt->fail()) = 0;
+	}
+
+	// use null MLE estimates as start point
+	alt->par[0] = null->mlparam(0);
+	alt->par[1] = 1.0;
+	like = findmax_bfgs(alt->getDim(), alt->par, alt, fn, dfn, alt->lowbounds(), alt->upbounds(), alt->numbounds(), alt->verblevel(), alt->fail());
+
+	// check for optimization failure from null MLE start point
+	if (alt->isfail() && *status)
+	{
+		fprintf(stderr, "Alternative optimization failed. ");
+		return 0.0;
+	}
+
+	if (like < alt->llh())
+	{
+		alt->setllh() = like;
+		for (i=0; i < alt->getDim(); ++i)
+			alt->setmlparam(i, null->par[i]);
+	}
+
+	// return likelihood ratio
+	return( calcLR(null->llh(), alt->llh(), islog) );
+}
+
+double Stats::mafguess (Pileup* pile, bool wt)
+{
+	char minor;
+	const static char a [] = {'A', 'C', 'G', 'T'};
+	int i;
+	double c = 0.0;
+	double total = 0.0;
+	double n;
+
+	minor = pile->minorid() ? pile->minorid() : pile->empiricalMinorFast(wt);
+
+	for (i=0; i<4; ++i)
+	{
+		n = wt ? pile->wtalleleCount(a[i]) : static_cast<double>(pile->alleleCount(a[i]));
+		if (a[i] == minor) c = n;
+		total += n;
+	}
+
+	return (c/total);
+}
+
+
+double Stats::calcLR (const double null, const double alt, bool islog)
+{
+//calculates likelihood ratio statistic
+
+	double lr = 0.0;
+
+	if (islog) // likelihoods are -log scaled
+		lr = 2 * null - 2 * alt;
+	else
+		lr = -2 * log(null) + 2 * log(alt);
+	return lr;
+}
+
+double Stats::negLogfn (const double para [], const void *generic_dat)
+{
+	/*
+	 * main likelihood function
+	 */
+
+	const Optim* optdata = static_cast<const Optim*>(generic_dat);
+	const Pileup* pile = static_cast<const Pileup*>(optdata->data);
 	const int npara = 2; // number parameters in model
 	const int findex = 0; // index position of allele frequency parameter
-	const int mindex = npara - 1 - findex; // index position of admixture proportion
-	static double p [npara];
+	const int mindex = 1; // index position of admixture proportion
+	static double p [npara]; // para[0] = alternate allele frequency, para[1] = admixture proportion
 	static double epsilon; // Phred scaled quality score
 	static double geno_marg; // marginal sum over genotype2 configurations
-	static double negloglike; // negative log likelihood of likelihood function
+	static double loglike; // log likelihood of likelihood function
 	static double genoprior [3];
 	static int k1, k2;
-	static Matrix<double> indlike (3, 3); // llh for individual at all genotypic configurations
-	static double maxlike; // max llh for individual among all genotypic configurations
-	static int isnull;
-	static double compensation = 0.0; // compensation for lost low-order bits in Kahan Sum
+	static Matrix<double> indlike (3, 3); // individual llh for all genotypic configurations
+	static double maxlike; // max individual llh among all genotypic configurations
 
-	isnull = (fnvals->optp < fnvals->np) ? 1 : 0;
-	if (isnull == 1) // null case; fix m to 1
+	if (optdata->getDim() < npara) // null case; fix m to 1
 	{
 		p[findex] = para[0]; // alternate allele frequency (f)
 		p[mindex] = 1.0; // admixture proportion (m)
 	}
 	else // alternative case
 	{
-		for (int i = 0; i < fnvals->np; ++i)
+		for (int i = 0; i < optdata->getDim(); ++i)
 				p[i] = para[i];
 	}
-	compensation = 0.0;
-	negloglike = 0.0;
+	loglike = 0.0;
 
-	// P(G1) does not depend on f; k1 can be 0 or 2
-	genoprior[0] = genoPrior(p[findex], 0, 0); // P(G1 = {0,2}, G2 = 0|f)
-	genoprior[1] = genoPrior(p[findex], 0, 1);  // P(G1 = {0,2}, G2 = 1|f)
-	genoprior[2] = genoPrior(p[findex], 0, 2); // P(G1 = {0,2}, G2 = 2|f)
+	// identify major and minor alleles
+	char major = pile->majorid();
+	char minor = pile->minorid();
+
+	// P(G1) does not depend on f: k1 can be 0 or 2
+	genoprior[0] = genoPrior(p[findex], 0); // P(G1 = {0,2}, G2 = 0|f)
+	genoprior[1] = genoPrior(p[findex], 1);  // P(G1 = {0,2}, G2 = 1|f)
+	genoprior[2] = genoPrior(p[findex], 2); // P(G1 = {0,2}, G2 = 2|f)
 	static std::vector<SiteData>::const_iterator ind_iter;
-	static std::vector< std::pair<int, int> >::const_iterator readdat;
+	static std::vector<seqread>::const_iterator readIter;
 
 	for (ind_iter = pile->seqdat.begin(); ind_iter != pile->seqdat.end(); ++ind_iter) // sum over all individuals
 	{
-		if (ind_iter->depth == 0) // missing data for individual
+		if (ind_iter->cov() < 1) // missing data for individual
 			continue;
 		maxlike = -1.0/0.0;
 		for (k1 = 0; k1 <= 2; k1 += 2) // sum over genotype1
@@ -63,10 +169,12 @@ double Like::negLogfn (const double para [], const void *generic_dat)
 			for (k2 = 0; k2 <= 2; ++k2) // sum over genotype2
 			{
 				indlike[k1][k2] = 0.0;
-				for (readdat = ind_iter->rdat.begin(); readdat != ind_iter->rdat.begin() + ind_iter->depth; ++readdat) // product over all reads of individual
+				for (readIter = ind_iter->rdat.begin(); readIter != ind_iter->rdat.begin() + ind_iter->cov(); ++readIter) // product over all reads of individual
 				{
-					epsilon = pow( 10, - (static_cast <double > (readdat->second)) / 10 );
-					indlike[k1][k2] += log( readProb(p[mindex], epsilon, k1, k2, readdat->first) );
+					{
+						epsilon = pow( 10, - (static_cast <double > (readIter->second)) / 10 );
+						indlike[k1][k2] += log(readProb(p[mindex], epsilon, k1, k2, major, minor, readIter->first));
+					}
 				}
 				if (indlike[k1][k2] > maxlike)
 					maxlike = indlike[k1][k2];
@@ -76,14 +184,130 @@ double Like::negLogfn (const double para [], const void *generic_dat)
 		for (k1 = 0; k1 <= 2; k1 += 2)
 			for (k2 = 0; k2 <= 2; ++k2)
 				geno_marg += exp(indlike[k1][k2] - maxlike) * genoprior[k2]; // switch back to probability space
-		kahanSum(-(log(geno_marg) + maxlike), &negloglike, &compensation);
+		loglike += log(geno_marg) + maxlike;
 	}
-	return negloglike;
+	return -loglike;
 }
 
-// calcGradient gets the gradient of the negative log likelihood function
-void Like::calcGradient (const double para [], double grad [], const void* generic_dat)
+
+double Stats::readProb (const double m, const double err, const int g1, const int g2, const char ref, const char alt, const char obs)
 {
+	/*
+	 * returns P(obs_read | allele1)*P(allele1 | G1,G2) + P(obs_read | allele2)*P(allele2 | G1,G2)
+	 */
+
+	double pread = 1.0;
+	if (g1 == 0)
+	{
+		if (g2 == 0)
+		{
+			if (obs==ref)
+				pread = 1.0 - err;
+			else if (obs==alt)
+				pread = err/3.0;
+			else
+				pread = err/3.0;
+		}
+		else if (g2 == 1)
+		{
+			if (obs==ref)
+				pread = (1.0-err)*(1.0-0.5*m) + (err*m)/6.0;
+			else if (obs==alt)
+				pread = (1.0-err)*(m/2.0) + (err/3.0)*(1.0-0.5*m);
+			else
+				pread = (err/3.0)*(1.0-0.5*m) + (err*m)/6.0;
+		}
+		else if (g2 == 2)
+		{
+			if (obs==ref)
+				pread = (1.0-err)*(1.0-m) + (err*m)/3.0;
+			else if (obs==alt)
+				pread = (1.0-err)*m + (err/3.0)*(1.0-m);
+			else
+				pread = (err/3.0)*(1.0-m) + (err*m)/3.0;
+		}
+		else
+			genoErr(g1,g2);
+	}
+	else if (g1 == 2)
+	{
+		if (g2 == 0)
+		{
+			if (obs==ref)
+				pread = (1.0-err)*m + (err/3.0)*(1.0-m);
+			else if (obs==alt)
+				pread = (1.0-err)*(1.0-m) + (err*m)/3.0;
+			else
+				pread = (err/3.0)*(1.0-m) + (err*m)/3.0;
+		}
+		else if (g2 == 1)
+		{
+			if (obs==ref)
+				pread = (1.0-err)*(m/2.0) + (err/3.0)*(1.0-0.5*m);
+			else if (obs==alt)
+				pread = (1.0-err)*(1.0-0.5*m) + (err*m)/6.0;
+			else
+				pread = (err/3.0)*(1.0-0.5*m) + (err*m)/6.0;
+		}
+		else if (g2 == 2)
+		{
+			if (obs==ref)
+				pread = err/3.0;
+			else if (obs==alt)
+				pread = 1.0-err;
+			else
+				pread = err/3.0;
+		}
+		else
+			genoErr(g1,g2);
+	}
+	else
+		genoErr(g1,g2);
+
+	return pread;
+}
+
+double Stats::genoPrior (const double f, const int g2)
+{
+	/*
+	 * calculates P(G1,G2|f)
+	 */
+
+	double prob = 0;
+
+	if (g2 == 0)
+		prob = 0.5 * (1-f) * (1-f);
+	else if (g2 == 1)
+		prob = f * (1-f);
+	else if (g2 == 2)
+		prob = 0.5 * f * f;
+	else
+		fprintf(stderr, "Invalid genotype2: g2 = %i", g2);
+
+	return prob;
+}
+
+void Stats::kahanSum(double summand, double* total, double* comp)
+{
+	double x = summand - *comp;
+	double y = *total + x;
+	*comp = (y - *total) - x;
+	*total = y;
+}
+
+void Stats::genoErr (const char g1, const char g2)
+{
+	fprintf(stderr, "Invalid genotype configuration: geno1 = %i, geno2 = %i\n", g1, g2);
+}
+
+
+/*
+ * The following code for calculating an analytic gradient is deprecated - switched to numeric gradient.
+ * It will need to be fixed and updated if ever used again.
+
+void Stats::calcGradient (const double para [], double grad [], const void* generic_dat)
+{
+	// gets the gradient of the negative log likelihood function
 	// para[0] = alternate allele frequency (f); para[1] = admixture proportion (M)
 
 	const FunData* fnvals = static_cast<const FunData*>(generic_dat);
@@ -206,83 +430,10 @@ void Like::calcGradient (const double para [], double grad [], const void* gener
 		grad[i] *= -1.0;
 }
 
-// readProb; sum over true bases of P(x|b)(b|G1,G2)
-double Like::readProb (const double m, const double err, const int g1, const int g2, const int read)
+void Stats::diffRead (const double err, const int g1, const int g2, const int read, double* dm, double* df)
 {
-	double pread = 1; // probability of read
-	if (g1 == 0)
-	{
-		if (g2 == 0)
-		{
-			if (read == 0)
-				pread = 1.0 - err;
-			else if (read == 1)
-				pread = err;
-			else
-				invalidRead();
-		}
-		else if (g2 == 1)
-		{
-			if (read == 0)
-				pread = 1.0 - err + m*(2*err/3 - 0.5);
-			else if (read == 1)
-				pread = err + m*(0.5 + err/3) - err*m;
-			else
-				invalidRead();
-		}
-		else if (g2 == 2)
-		{
-			if (read == 0)
-				pread = 1.0 - err + m*(err + err/3 - 1.0);
-			else if (read == 1)
-				pread = err + m*(1.0 + (2*err)/3 - 2*err);
-			else
-				invalidRead();
-		}
-		else
-			invalidG2();
-	}
-	else if (g1 == 2)
-	{
-		if (g2 == 0)
-		{
-			if (read == 0)
-				pread = m*(1.0 - err - err/3) + err/3;
-			else if (read == 1)
-				pread = 2*err*(m + 1/3 - m/3) - m + 1.0 - err;
-			else
-				invalidRead();
-		}
-		else if (g2 == 1)
-		{
-			if (read == 0)
-				pread = 2*m*(0.25 - err/3) + err/3;
-			else if (read == 1)
-				pread = err*(m + 2/3 - m/3 - 1.0) + m/2 + 1.0 - m;
-			else
-				invalidRead();
-		}
-		else if (g2 == 2)
-		{
-			if (read == 0)
-				pread = err/3;
-			else if (read == 1)
-				pread = 1.0 - err/3;
-			else
-				invalidRead();
-		}
-		else
-			invalidG2();
-	}
-	else
-		invalidG1();
+	// diffRead; derivative of the sum over true bases of P(x|b)(b|G1,G2)
 
-	return pread;
-}
-
-// diffRead; derivative of the sum over true bases of P(x|b)(b|G1,G2)
-void Like::diffRead (const double err, const int g1, const int g2, const int read, double* dm, double* df)
-{
 	*df = 0.0;
 	*dm = 0.0;
 	if (g1 == 0)
@@ -353,42 +504,10 @@ void Like::diffRead (const double err, const int g1, const int g2, const int rea
 		invalidG1();
 }
 
-// genoPrior; P(G1,G2|f)
-double Like::genoPrior (const double f, const int g1, const int g2)
+double Stats::diffGenoPrior (const double f, const int g1, const int g2)
 {
-	double prob = 0;
+	// diffGenoPrior; derivative of P(G1,G2|f)
 
-	if (g1 == 0)
-	{
-		if (g2 == 0)
-			prob = 0.5 * (1 - f) * (1 - f);
-		else if (g2 == 1)
-			prob = f * (1 - f);
-		else if (g2 == 2)
-			prob = 0.5 * f * f;
-		else
-			invalidG2();
-	}
-	else if (g1 == 2)
-	{
-		if (g2 == 0)
-			prob = 0.5 * (1 - f) * (1 - f);
-		else if (g2 == 1)
-			prob = f * (1 - f);
-		else if (g2 == 2)
-			prob = 0.5 * f * f;
-		else
-			invalidG2();
-	}
-	else
-		invalidG1();
-
-	return prob;
-}
-
-// diffGenoPrior; derivative of P(G1,G2|f)
-double Like::diffGenoPrior (const double f, const int g1, const int g2)
-{
 	double dprior = 0; // d/df P(G1,G2|f)
 
 	if (g1 == 0)
@@ -418,29 +537,4 @@ double Like::diffGenoPrior (const double f, const int g1, const int g2)
 
 	return dprior;
 }
-
-void Like::kahanSum(double summand, double* total, double* comp)
-{
-	double x = summand - *comp;
-	double y = *total + x;
-	*comp = (y - *total) - x;
-	*total = y;
-}
-
-void Like::invalidRead ()
-{
-	fprintf(stderr, "\nInvalid read type encountered\n--> exiting\n");
-	exit(EXIT_FAILURE);
-}
-
-void Like::invalidG1 ()
-{
-	fprintf(stderr, "\nInvalid number of non-ref alleles for locus 1 encountered\n--> exiting\n");
-	exit(EXIT_FAILURE);
-}
-
-void Like::invalidG2 ()
-{
-	fprintf(stderr, "\nInvalid number of non-ref alleles for locus 2 encountered\n--> exiting\n");
-	exit(EXIT_FAILURE);
-}
+*/

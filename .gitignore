@@ -1,8 +1,7 @@
 ngsParalog
 *.o
 *.d
-/Debug/
+Debug/
 *.cproject
 *.project
-/Release/
-
+Release/

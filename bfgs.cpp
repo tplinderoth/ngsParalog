@@ -3,11 +3,13 @@
 */
 
 
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <iostream>
+#include <ctime>
 #include "bfgs.h"
 
 
@@ -25,8 +27,9 @@ void Yanggradient (int n, const double x[], double f0,
 		   const double* lowbound, const double* upbound){
 
   int i,j;
-  double *x0=space, *x1=space+n, eh0, eh01, eh;
-  eh0=eh01=1.e-8;
+  //double *x0=space, *x1=space+n, eh0, eh01, eh;
+  //eh0=eh01=1.e-8;
+  double *x0=space, *x1=space+n, eh01=1.e-8, eh;
   for (i=0;i<n;i++)  {
     for (j=0;j<n;j++)
       x0[j]=x1[j]=x[j];
@@ -47,13 +50,15 @@ void getgradient(int npar, const double invec[],
 		 const double* lowbound, const double* upbound){
 
   double f0;
-  int i;
+//  int i; //TL - unused variable
   double *space =(double *)calloc((2*npar+10),sizeof(double));
 
 
   f0 = func(invec,dats);
   Yanggradient(npar, invec, f0, outvec,dats, func, space, lowbound, upbound);
 
+// TL - the checkbounds label is never used
+/*
  checkbounds:
   for (i=0; i<npar; i++) {
     if (invec[i] <= lowbound[i] && outvec[i] > 0.0)
@@ -61,6 +66,8 @@ void getgradient(int npar, const double invec[],
     if (invec[i] >=upbound[i] && outvec[i] < 0.0)
       outvec[i] = 0.0;
   }
+*/
+
   free(space);
 }
 
@@ -83,7 +90,7 @@ typedef int logical;
 
 double findmax_bfgs(int numpars, double *invec, const void *dats, double (*fun)(const double x[], const void*),
 	void (*dfun)(const double x[], double y[], const void*),
-	double *lowbound, double *upbound, int *nbd, int noisy, unsigned int* fail) {
+	double *lowbound, double *upbound, int *nbd, int noisy, int* fail) {
 /*
 double findmax_bfgs(int numpars, double *invec,const void*dats, double (*fun)(const double x[],const void*),
 		    void (*dfun)(const double x[], double y[]),
@@ -91,11 +98,19 @@ double findmax_bfgs(int numpars, double *invec,const void*dats, double (*fun)(co
 */
   int i, m, isave[44], *iwa;
   double *grad, *wa, factr, pgtol, dsave[29], like;
-  char task[60], csave[60];
+//  char task[60], csave[60];
+
+  std::string taskstr; // TL - changed 'task' from char array to std::string
+  taskstr.resize(60);
+  std::string* task = &taskstr;
+  std::string csavestr; // TL - changed 'csave' from char array to std::string
+  csavestr.resize(60);
+  std::string* csave = &csavestr;
+
   int setulb_(int *n, int *m, double *x, double *l, double *u,
 			     int *nbd, double *f, double *g, double *factr,
 			     double *pgtol, double *wa, int *iwa,
-			     char *task, int *iprint, char *csave, int *lsave,
+			     std::string *task, int *iprint, std::string *csave, int *lsave,
 	      int *isave, double *dsave, int* optfail); // TL added "optfail" argument 2/16/15
   //    int setulb_();
   void my_strcpy(char *s1, char *s2);
@@ -110,8 +125,9 @@ double findmax_bfgs(int numpars, double *invec,const void*dats, double (*fun)(co
   grad =(double *) calloc(numpars,sizeof(double));
   wa =(double *) calloc(((2*m+4)*numpars + 12*m*m + 12*m),sizeof(double));
   iwa =(int *) calloc(3*numpars,sizeof(int));
-  my_strcpy(task, "START");
-  for (i=5; i<60; i++) task[i]=' ';
+  //my_strcpy(task, "START");
+  taskstr = "START";
+  //for (i=5; i<60; i++) task[i]=' ';
   like = (*fun)(invec,dats);
   if(dfun!=NULL)
     dfun(invec, grad,dats);
@@ -121,7 +137,8 @@ double findmax_bfgs(int numpars, double *invec,const void*dats, double (*fun)(co
     setulb_(&numpars, &m, invec, lowbound, upbound, nbd, &like,grad, &factr, &pgtol, wa, iwa, task, &noisy, csave, lsave,isave, dsave, &optfail); //TL 2/16/15
     if (optfail) // TL 2/16/15
     	++*fail;
-    if (task[0]=='F' && task[1]=='G') {
+    //if (task[0]=='F' && task[1]=='G') {
+    if (taskstr[0]=='F' && taskstr[1]=='G') {
       //printf("\t");
       like = fun(invec,dats);
       if(dfun!=NULL)
@@ -132,26 +149,27 @@ double findmax_bfgs(int numpars, double *invec,const void*dats, double (*fun)(co
       if (noisy > 1)
       {
     	printf("like=%f\n", like);
-    	for (int i = 0; i < numpars; i++)
+    	for (i = 0; i < numpars; i++)
     	{
     		if (i < numpars - 1)
-    			printf("par[%d]=%f ", i, invec[i]);
+    			printf("par[%d]=%f ", i, *(invec+i));
     		else
-    			printf("par[%d]=%f\n", i, invec[i]);
+    			printf("par[%d]=%f\n", i, *(invec+i));
     	}
-		printf("grad=[ ");
-    	for (int i = 0; i < numpars; i++)
+	printf("grad=[ ");
+    	for (i = 0; i < numpars; i++)
     	{
-    		if (i < numpars - 1)
-    			printf("%f ", i, grad[i]);
+    	    if (i < numpars - 1)
+    		printf("%f ", *(grad+i));
     	    else
-    	    	printf("%f ]\n", i, grad[i]);
+    	    	printf("%f ]\n", *(grad+i));
     	}
       }
 
       continue;
     }
-    else if (strncmp(task, "NEW_X", 5)==0) {
+    //else if (strncmp(task, "NEW_X", 5)==0) {
+    else if (task->compare(0,5,"NEW_X") == 0) {
       //      if (noisy > 1) printf("\n");
       continue;
     }
@@ -201,7 +219,7 @@ typedef int ftnlen;
 /* Subroutine */ int setulb_(int *n, int *m, double *x, double *l, double *u,
 			     int *nbd, double *f, double *g, double *factr,
 			     double *pgtol, double *wa, int *iwa,
-			     char *task, int *iprint, char *csave, int *lsave,
+			     std::string *task, int *iprint, std::string *csave, int *lsave,
 			     int *isave, double *dsave, int* optfail)
 {
     /* System generated locals */
@@ -211,9 +229,10 @@ typedef int ftnlen;
     //    integer s_cmp();
 
     /* Local variables */
-     integer lsnd, lsgo, lygo, l1, l2, l3, ld, lr, lt;
+     //integer lsnd, lsgo, lygo, l1, l2, l3, ld, lr, lt;
+     integer lsnd, lsgo, lygo, ld, lr, lt; // TL - 'l1', 'l2', 'l3' set but not used
      //extern /* Subroutine */ //int mainlb_();
-       int mainlb_(integer *n, integer *m, doublereal *x, doublereal *l, doublereal *u, integer *nbd, doublereal *f, doublereal *g, doublereal *factr, doublereal *pgtol, doublereal *ws, doublereal *wy, doublereal *sy, doublereal *ss, doublereal *yy, doublereal *wt, doublereal *wn, doublereal *snd, doublereal *z__, doublereal *r__, doublereal *d__, doublereal *t, doublereal *wa, doublereal *sg, doublereal *sgo, doublereal *yg, doublereal *ygo, integer *index, integer *iwhere, integer *indx2, char *task, integer *iprint, char *csave, logical *lsave, integer *isave, doublereal *dsave, ftnlen task_len, ftnlen csave_len, int* optfail); //TL mod 2/16/15
+       int mainlb_(integer *n, integer *m, doublereal *x, doublereal *l, doublereal *u, integer *nbd, doublereal *f, doublereal *g, doublereal *factr, doublereal *pgtol, doublereal *ws, doublereal *wy, doublereal *sy, doublereal *ss, doublereal *yy, doublereal *wt, doublereal *wn, doublereal *snd, doublereal *z__, doublereal *r__, doublereal *d__, doublereal *t, doublereal *wa, doublereal *sg, doublereal *sgo, doublereal *yg, doublereal *ygo, integer *index, integer *iwhere, integer *indx2, std::string *task, integer *iprint, std::string *csave, logical *lsave, integer *isave, doublereal *dsave, ftnlen task_len, ftnlen csave_len, int* optfail); //TL mod 2/16/15
 
      integer lz, lwa, lsg, lyg, lwn, lss, lws, lwt, lsy, lwy, lyy;
 
@@ -409,7 +428,8 @@ typedef int ftnlen;
     --dsave;
 
     /* Function Body */
-    if (strncmp(task, "START", 5) == 0) {
+    //if (strncmp(task, "START", 5) == 0) {
+    if (task->compare(0,5,"START") == 0) {
 	isave[1] = *m * *n;
 /* Computing 2nd power */
 	i__1 = *m;
@@ -435,9 +455,9 @@ typedef int ftnlen;
 	isave[19] = isave[18] + *m;
 	isave[20] = isave[19] + *m;
     }
-    l1 = isave[1];
-    l2 = isave[2];
-    l3 = isave[3];
+    //l1 = isave[1]; //TL - not used
+    //l2 = isave[2]; //TL - not used
+    //l3 = isave[3]; //TL - not used
     lws = isave[4];
     lwy = isave[5];
     lsy = isave[6];
@@ -467,7 +487,7 @@ typedef int ftnlen;
 /* ======================= The end of setulb ============================= */
 /* Subroutine */ int mainlb_(int *n,int  *m,double *x,double *l,double *u,int * nbd,double * f,double * g,double * factr,double * pgtol,double * ws,double * wy,
 	double *sy,double * ss,double * yy,double * wt,double * wn,double * snd,double * z__,double * r__,double * d__,double * t,double * wa,double * sg,double * sgo,double * yg,double * ygo,
-	int * index,	int * iwhere,	int * indx2,char * task,int * iprint,char * csave,logical *lsave,int *isave, double *dsave,
+	int * index,	int * iwhere,	int * indx2, std::string* task,int * iprint,std::string * csave,logical *lsave,int *isave, double *dsave,
 	ftnlen task_len,ftnlen csave_len, int* optfail) // TL mod 2/16/15
 		 /*
 integer *n, *m;
@@ -526,7 +546,8 @@ doublereal ddot_(integer *n, doublereal *dx, integer *incx, doublereal *dy, inte
      integer info;
      doublereal time;
      integer nfgv, ifun, iter, nint;
-     char word[3];
+     //char word[3];
+     std::string word(3,'\0');
      doublereal time1, time2;
      integer i__, iback, k;
      //    extern /* Subroutine */ int dscal_();
@@ -550,13 +571,13 @@ int subsm_(integer *n, integer *m, integer *nsub, integer *ind, doublereal *l, d
      doublereal xstep, stpmx;
      //     extern /* Subroutine */// int prn1lb_(), prn2lb_();// prn3lb_();
 int prn1lb_(integer *n, integer *m, doublereal *l, doublereal *u, doublereal *x, integer *iprint, integer *itfile, doublereal *epsmch);
-int prn2lb_(integer *n, doublereal *x, doublereal *f, doublereal *g, integer *iprint, integer *itfile, integer *iter, integer *nfgv, integer *nact, doublereal *sbgnrm, integer *nint, char *word, integer *iword, integer *iback, doublereal *stp, doublereal *xstep, ftnlen word_len);
+int prn2lb_(integer *n, doublereal *x, doublereal *f, doublereal *g, integer *iprint, integer *itfile, integer *iter, integer *nfgv, integer *nact, doublereal *sbgnrm, integer *nint, std::string *word, integer *iword, integer *iback, doublereal *stp, doublereal *xstep, ftnlen word_len);
 
-int prn3lb_(integer *n, doublereal *x, doublereal *f, char *task, integer *iprint, integer *info, integer *itfile, integer *iter, integer *nfgv, integer *nintol, integer *nskip, integer *nact, doublereal *sbgnrm, doublereal *time, integer *nint, char *word, integer *iback, doublereal *stp, doublereal *xstep, integer *k, doublereal *cachyt, doublereal *sbtime, doublereal *lnscht, ftnlen task_len, ftnlen word_len, int* optfail); // TL 2/16/15
+int prn3lb_(integer *n, doublereal *x, doublereal *f, std::string *task, integer *iprint, integer *info, integer *itfile, integer *iter, integer *nfgv, integer *nintol, integer *nskip, integer *nact, doublereal *sbgnrm, doublereal *time, integer *nint, std::string *word, integer *iback, doublereal *stp, doublereal *xstep, integer *k, doublereal *cachyt, doublereal *sbtime, doublereal *lnscht, ftnlen task_len, ftnlen word_len, int* optfail); // TL 2/16/15
      doublereal gd, dr, rr;
      integer ileave;
      extern /* Subroutine */// int errclb_();
-int errclb_(integer *n, integer *m, doublereal *factr, doublereal *l, doublereal *u, integer *nbd, char *task, integer *info, integer *k, ftnlen task_len);
+int errclb_(integer *n, integer *m, doublereal *factr, doublereal *l, doublereal *u, integer *nbd, std::string *task, integer *info, integer *k, ftnlen task_len);
      integer itfile;
      doublereal cachyt, epsmch;
      logical updatd;
@@ -572,7 +593,7 @@ int active_(integer *n, doublereal *l, doublereal *u, integer *nbd, doublereal *
      doublereal lnscht;
      //    extern /* Subroutine */ int cauchy_(), cmprlb_(), lnsrlb_(), matupd_();
 int matupd_(integer *n, integer *m, doublereal *ws, doublereal *wy, doublereal *sy, doublereal *ss, doublereal *d__, doublereal *r__, integer *itail, integer *iupdat, integer *col, integer *head, doublereal *theta, doublereal *rr, doublereal *dr, doublereal *stp, doublereal *dtd);
-int lnsrlb_(integer *n, doublereal *l, doublereal *u, integer *nbd, doublereal *x, doublereal *f, doublereal *fold, doublereal *gd, doublereal *gdold, doublereal *g, doublereal *d__, doublereal *r__, doublereal *t, doublereal *z__, doublereal *stp, doublereal *dnorm, doublereal *dtd, doublereal *xstep, doublereal *stpmx, integer *iter, integer *ifun, integer *iback, integer *nfgv, integer *info, char *task, logical *boxed, logical *cnstnd, char *csave, integer *isave, doublereal *dsave, ftnlen task_len, ftnlen csave_len);
+int lnsrlb_(integer *n, doublereal *l, doublereal *u, integer *nbd, doublereal *x, doublereal *f, doublereal *fold, doublereal *gd, doublereal *gdold, doublereal *g, doublereal *d__, doublereal *r__, doublereal *t, doublereal *z__, doublereal *stp, doublereal *dnorm, doublereal *dtd, doublereal *xstep, doublereal *stpmx, integer *iter, integer *ifun, integer *iback, integer *nfgv, integer *info, std::string *task, logical *boxed, logical *cnstnd, std::string *csave, integer *isave, doublereal *dsave, ftnlen task_len, ftnlen csave_len);
 int cmprlb_(integer *n, integer *m, doublereal *x, doublereal *g, doublereal *ws, doublereal *wy, doublereal *sy, doublereal *wt, doublereal *z__, doublereal *r__, doublereal *wa, integer *index, doublereal *theta, integer *col, integer *head, integer *nfree, logical *cnstnd, integer *info);
 int cauchy_(integer *n, doublereal *x, doublereal *l, doublereal *u, integer *nbd, doublereal *g, integer *iorder, integer *iwhere, doublereal *t, doublereal *d__, doublereal *xcp, integer *m, doublereal *wy, doublereal *ws, doublereal *sy, doublereal *wt, doublereal *theta, integer *col, integer *head, doublereal *p, doublereal *c__, doublereal *wbp, doublereal *v, integer *nint, doublereal *sg, doublereal *yg, integer *iprint, doublereal *sbgnrm, integer *info);
      integer nintol;
@@ -820,7 +841,8 @@ int projgr_(integer *n, doublereal *l, doublereal *u, integer *nbd, doublereal *
     --dsave;
 
     /* Function Body */
-    if (strncmp(task, "START", 5) == 0) {
+    //if (strncmp(task, "START", 5) == 0) {
+    if (task->compare(0,5,"START") == 0) {
       timer_(&time1);
 /*        Generate the current machine precision. */
       epsmch = dpmeps_();
@@ -845,16 +867,18 @@ int projgr_(integer *n, doublereal *l, doublereal *u, integer *nbd, doublereal *
 	sbtime = 0.;
 	lnscht = 0.;
 /*           'word' records the status of subspace solutions. */
-	my_strcpy(word, "---");
+	//my_strcpy(word, "---");
+	word = "---";
 	//	s_copy(word, "---", (ftnlen)3, (ftnlen)3);
 /*           'info' records the termination information. */
 	info = 0;
 /*        Check the input arguments for errors. */
 	errclb_(n, m, factr, &l[1], &u[1], &nbd[1], task, &info, &k, (ftnlen)
 		60);
-	if (strncmp(task, "ERROR", 5)==0) {
+	//if (strncmp(task, "ERROR", 5)==0) {
+        if (task->compare(0,5,"ERROR") == 0) {
 	    prn3lb_(n, &x[1], f, task, iprint, &info, &itfile, &iter, &nfgv, &
-		    nintol, &nskip, &nact, &sbgnrm, &c_b9, &nint, word, &
+		    nintol, &nskip, &nact, &sbgnrm, &c_b9, &nint, &word, &
 		    iback, &stp, &xstep, &k, &cachyt, &sbtime, &lnscht, (
 		    ftnlen)60, (ftnlen)3, optfail); // TL 2/16/15
 	    return 0;
@@ -906,17 +930,22 @@ int projgr_(integer *n, doublereal *l, doublereal *u, integer *nbd, doublereal *
 	dtd = dsave[16];
 /*        After returning from the driver go to the point where execution */
 /*        is to resume. */
-	if (strncmp(task, "FG_LN", 5)==0) {
+	//if (strncmp(task, "FG_LN", 5)==0) {
+	if (task->compare(0,5,"FG_LN") == 0) {
 	    goto L666;
 	}
-	if (strncmp(task, "NEW_X", 5)==0) {
+	//if (strncmp(task, "NEW_X", 5)==0) {
+	if (task->compare(0,5,"NEW_X") == 0) {
 	    goto L777;
 	}
-	if (strncmp(task, "FG_ST", 5)==0) {
+	//if (strncmp(task, "FG_ST", 5)==0) {
+	if (task->compare(0,5,"FG_ST") == 0) {
 	    goto L111;
 	}
-	if (strncmp(task, "STOP", 4)==0) {
-	  if (strstr(task, "CPU")!=NULL) {
+	//if (strncmp(task, "STOP", 4)==0) {
+	if (task->compare(0,4,"STOP") == 0) {
+	  //if (strstr(task, "CPU")!=NULL) {
+	  if (task->find("CPU") != std::string::npos) {
 /*                                          restore the previous iterate. */
 		dcopy_(n, &t[1], &c__1, &x[1], &c__1);
 		dcopy_(n, &r__[1], &c__1, &g[1], &c__1);
@@ -926,7 +955,8 @@ int projgr_(integer *n, doublereal *l, doublereal *u, integer *nbd, doublereal *
 	}
     }
 /*     Compute f0 and g0. */
-    my_strcpy(task, "FG_START");
+    //my_strcpy(task, "FG_START");
+    *task = "FG_START";
 /*          return to the driver to calculate f and g; reenter at 111. */
     goto L1000;
 L111:
@@ -951,7 +981,8 @@ L111:
     }
     if (sbgnrm <= *pgtol) {
 /*                                terminate the algorithm. */
-      my_strcpy(task, "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL");
+      //my_strcpy(task, "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL");
+      *task = "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL";
       //	s_copy(task, "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL", (
       //		ftnlen)60, (ftnlen)48);
 	goto L999;
@@ -1117,7 +1148,8 @@ L666:
 		--ifun;
 		--iback;
 	    }
-	    my_strcpy(task, "ABNORMAL_TERMINATION_IN_LNSRCH");
+	    //my_strcpy(task, "ABNORMAL_TERMINATION_IN_LNSRCH");
+	    *task = "ABNORMAL_TERMINATION_IN_LNSRCH";
 	    //	    s_copy(task, "ABNORMAL_TERMINATION_IN_LNSRCH", (ftnlen)60, (
 	    //		    ftnlen)30);
 	    ++iter;
@@ -1138,13 +1170,15 @@ L666:
 	    theta = 1.;
 	    iupdat = 0;
 	    updatd = FALSE_;
-	    my_strcpy(task, "RESTART_FROM_LNSRCH");
+	    //my_strcpy(task, "RESTART_FROM_LNSRCH");
+	    *task = "RESTART_FROM_LNSRCH";
 	    //	    s_copy(task, "RESTART_FROM_LNSRCH", (ftnlen)60, (ftnlen)19);
 	    timer_(&cpu2);
 	    lnscht = lnscht + cpu2 - cpu1;
 	    goto L222;
 	}
-    } else if (strncmp(task, "FG_LN", 5)==0) {
+    //} else if (strncmp(task, "FG_LN", 5)==0) {
+    } else if (task->compare(0,5,"FG_LN") == 0) {
 /*          return to the driver for calculating f and g; reenter at 666. */
 	goto L1000;
     } else {
@@ -1156,14 +1190,15 @@ L666:
 	projgr_(n, &l[1], &u[1], &nbd[1], &x[1], &g[1], &sbgnrm);
 /*        Print iteration information. */
 	prn2lb_(n, &x[1], f, &g[1], iprint, &itfile, &iter, &nfgv, &nact, &
-		sbgnrm, &nint, word, &iword, &iback, &stp, &xstep, (ftnlen)3);
+		sbgnrm, &nint, &word, &iword, &iback, &stp, &xstep, (ftnlen)3);
 	goto L1000;
     }
 L777:
 /*     Test for termination. */
     if (sbgnrm <= *pgtol) {
 /*                                terminate the algorithm. */
-      my_strcpy(task, "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL");
+     //my_strcpy(task, "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL");
+     *task = "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL";
 	goto L999;
     }
 /* Computing MAX */
@@ -1171,7 +1206,8 @@ L777:
     ddum = max(d__1,1.);
     if (fold - *f <= tol * ddum) {
 /*                                        terminate the algorithm. */
-      my_strcpy(task, "CONVERGENCE: REL_REDUCTION_OF_F <= FACTR*EPSMCH");
+      //my_strcpy(task, "CONVERGENCE: REL_REDUCTION_OF_F <= FACTR*EPSMCH");
+      *task = "CONVERGENCE: REL_REDUCTION_OF_F <= FACTR*EPSMCH";
 	if (iback >= 10) {
 	    info = -5;
 	}
@@ -1249,7 +1285,7 @@ L999:
     timer_(&time2);
     time = time2 - time1;
     prn3lb_(n, &x[1], f, task, iprint, &info, &itfile, &iter, &nfgv, &nintol,
-	    &nskip, &nact, &sbgnrm, &time, &nint, word, &iback, &stp, &xstep,
+	    &nskip, &nact, &sbgnrm, &time, &nint, &word, &iback, &stp, &xstep,
 	    &k, &cachyt, &sbtime, &lnscht, (ftnlen)60, (ftnlen)3, optfail); // TL mod 2/16/15
 L1000:
 /*     Save local variables. */
@@ -1639,9 +1675,9 @@ int dscal_(integer *n, doublereal *da, doublereal *dx, integer *incx);
      //    extern /* Subroutine */ int dcopy_(), daxpy_();
 int daxpy_(integer *n, doublereal *da, doublereal *dx, integer *incx, doublereal *dy, integer *incy);
 int dcopy_(integer *n, doublereal *dx, integer *incx, doublereal *dy, integer *incy);
-     doublereal f1, f2, dt, tj, tl;
+     doublereal f1, f2, dt, tj, tl=0.; // TL - initialize to '0.' to avoid uninitialize warnings
      integer nbreak, ibkmin;
-     doublereal tu;
+     doublereal tu = 0.; // TL - initialize to '0.' to avoid uninitialize warning
      //    extern /* Subroutine */ int hpsolb_();
 int hpsolb_(integer *n, doublereal *t, integer *iorder, integer *iheap);
      integer pointr;
@@ -2335,7 +2371,7 @@ int bmv_(integer *m, doublereal *sy, doublereal *wt, integer *col, doublereal *v
 } /* cmprlb_ */
 
 /* ======================= The end of cmprlb ============================= */
-/* Subroutine */ int errclb_(int *n,int * m,double * factr,double * l,double * u,int * nbd,char * task,int* info,int * k,ftnlen task_len)/*
+/* Subroutine */ int errclb_(int *n,int * m,double * factr,double * l,double * u,int * nbd,std::string * task,int* info,int * k,ftnlen task_len)/*
 integer *n, *m;
 doublereal *factr, *l, *u;
 integer *nbd;
@@ -2378,15 +2414,18 @@ ftnlen task_len;*/
 
     /* Function Body */
     if (*n <= 0) {
-      my_strcpy(task, "ERROR: N .LE. 0");
+      //my_strcpy(task, "ERROR: N .LE. 0");
+      *task = "ERROR: N .LE. 0";
       //	s_copy(task, "ERROR: N .LE. 0", (ftnlen)60, (ftnlen)15);
     }
     if (*m <= 0) {
-      my_strcpy(task, "ERROR: M .LE. 0");
+      //my_strcpy(task, "ERROR: M .LE. 0");
+      *task = "ERROR: M .LE. 0";
       //	s_copy(task, "ERROR: M .LE. 0", (ftnlen)60, (ftnlen)15);
     }
     if (*factr < 0.) {
-      my_strcpy(task, "ERROR: FACTR .LT. 0");
+      //my_strcpy(task, "ERROR: FACTR .LT. 0");
+      *task = "ERROR: FACTR .LT. 0";
       //	s_copy(task, "ERROR: FACTR .LT. 0", (ftnlen)60, (ftnlen)19);
     }
 /*     Check the validity of the arrays nbd(i), u(i), and l(i). */
@@ -2394,7 +2433,8 @@ ftnlen task_len;*/
     for (i__ = 1; i__ <= i__1; ++i__) {
 	if (nbd[i__] < 0 || nbd[i__] > 3) {
 /*                                                   return */
-	  my_strcpy(task, "ERROR: INVALID NBD");
+	  //my_strcpy(task, "ERROR: INVALID NBD");
+	  *task = "ERROR: INVALID NBD";
 	  //	    s_copy(task, "ERROR: INVALID NBD", (ftnlen)60, (ftnlen)18);
 	    *info = -6;
 	    *k = i__;
@@ -2402,7 +2442,8 @@ ftnlen task_len;*/
 	if (nbd[i__] == 2) {
 	    if (l[i__] > u[i__]) {
 /*                                    return */
-	      my_strcpy(task, "ERROR: NO FEASIBLE SOLUTION");
+	      //my_strcpy(task, "ERROR: NO FEASIBLE SOLUTION");
+	      *task = "ERROR: NO FEASIBLE SOLUTION";
 	      //		s_copy(task, "ERROR: NO FEASIBLE SOLUTION", (ftnlen)60, (
 	      //			ftnlen)27);
 		*info = -7;
@@ -3163,7 +3204,7 @@ L30:
 /* ====================== The end of hpsolb ============================== */
 /* Subroutine */ int lnsrlb_(int *n,double * l,double * u,int * nbd,double * x,double * f,double * fold,double * gd,double * gdold,double * g,double * d__,double * r__,
 	 double *t,double * z__,double * stp,double * dnorm,double * dtd,double * xstep,double * stpmx,int * iter,int * ifun,int * iback,int * nfgv,int * info,
-			     char *task,logical * boxed,logical * cnstnd,char * csave,int * isave,double * dsave,ftnlen task_len,ftnlen csave_len)/*
+			     std::string *task,logical * boxed,logical * cnstnd,std::string * csave,int * isave,double * dsave,ftnlen task_len,ftnlen csave_len)/*
 integer *n;
 doublereal *l, *u;
 integer *nbd;
@@ -3195,7 +3236,7 @@ doublereal ddot_(integer *n, doublereal *dx, integer *incx, doublereal *dy, inte
 int dcopy_(integer *n, doublereal *dx, integer *incx, doublereal *dy, integer *incy);
      doublereal a1, a2;
      //    extern /* Subroutine */ int dcsrch_();
-int dcsrch_(doublereal *f, doublereal *g, doublereal *stp, doublereal *ftol, doublereal *gtol, doublereal *xtol, doublereal *stpmin, doublereal *stpmax, char *task, integer *isave, doublereal *dsave, ftnlen task_len);
+int dcsrch_(doublereal *f, doublereal *g, doublereal *stp, doublereal *ftol, doublereal *gtol, doublereal *xtol, doublereal *stpmin, doublereal *stpmax, std::string *task, integer *isave, doublereal *dsave, ftnlen task_len);
 /*     ********** */
 
 /*     Subroutine lnsrlb */
@@ -3236,7 +3277,8 @@ int dcsrch_(doublereal *f, doublereal *g, doublereal *stp, doublereal *ftol, dou
     --dsave;
 
     /* Function Body */
-    if (strncmp(task, "FG_LN", 5)==0) {
+    //if (strncmp(task, "FG_LN", 5)==0) {
+    if (task->compare(0,5,"FG_LN") == 0) {
 	goto L556;
     }
     *dtd = ddot_(n, &d__[1], &c__1, &d__[1], &c__1);
@@ -3283,7 +3325,8 @@ int dcsrch_(doublereal *f, doublereal *g, doublereal *stp, doublereal *ftol, dou
     *fold = *f;
     *ifun = 0;
     *iback = 0;
-    my_strcpy(csave, "START");
+    //my_strcpy(csave, "START");
+    *csave = "START";
     //    s_copy(csave, "START", (ftnlen)60, (ftnlen)5);
 L556:
     *gd = ddot_(n, &g[1], &c__1, &d__[1], &c__1);
@@ -3299,8 +3342,10 @@ L556:
     dcsrch_(f, gd, stp, &c_b275, &c_b276, &c_b277, &c_b9, stpmx, csave, &
 	    isave[1], &dsave[1], (ftnlen)60);
     *xstep = *stp * *dnorm;
-    if (strncmp(csave, "CONV", 4) != 0 && strncmp(csave, "WARN", 4)!=0) {
-	my_strcpy(task, "FG_LNSRCH");
+    //if (strncmp(csave, "CONV", 4) != 0 && strncmp(csave, "WARN", 4)!=0) {
+    if (csave->compare(0,4,"CONV") != 0 && csave->compare(0,4,"WARN") != 0) {
+	//my_strcpy(task, "FG_LNSRCH");
+	*task = "FG_LNSRCH";
 	++(*ifun);
 	++(*nfgv);
 	*iback = *ifun - 1;
@@ -3314,7 +3359,8 @@ L556:
 	    }
 	}
     } else {
-	my_strcpy(task, "NEW_X");
+	//my_strcpy(task, "NEW_X");
+	*task = "NEW_X";
     }
     return 0;
 } /* lnsrlb_ */
@@ -3563,7 +3609,7 @@ the projected gradient\002,/,\002f     = function value\002,/,/,\002        \
 
 /* ======================= The end of prn1lb ============================= */
 /* Subroutine */ int prn2lb_(int *n,double * x,double * f,double * g,int * iprint,int * itfile,int * iter,int * nfgv,int * nact,
-	double *sbgnrm,int* nint, char *word,int * iword, int *iback,double * stp,double * xstep,ftnlen word_len)/*
+	double *sbgnrm,int* nint, std::string *word,int * iword, int *iback,double * stp,double * xstep,ftnlen word_len)/*
 integer *n;
 doublereal *x, *f, *g;
 integer *iprint, *itfile, *iter, *nfgv, *nact;
@@ -3627,18 +3673,22 @@ ftnlen word_len;*/
     /* Function Body */
     if (*iword == 0) {
 /*                            the subspace minimization converged. */
-      my_strcpy(word, "con");
+      //my_strcpy(word, "con");
+      *word = "con";
       //	s_copy(word, "con", (ftnlen)3, (ftnlen)3);
     } else if (*iword == 1) {
       /*                          the subspace minimization stopped at a bound. */
-      my_strcpy(word, "bnd");
+      //my_strcpy(word, "bnd");
+      *word = "bnd";
       //	s_copy(word, "bnd", (ftnlen)3, (ftnlen)3);
     } else if (*iword == 5) {
 /*                             the truncated Newton step has been used. */
-      my_strcpy(word, "TNT");
+      //my_strcpy(word, "TNT");
+      *word = "TNT";
       //	s_copy(word, "TNT", (ftnlen)3, (ftnlen)3);
     } else {
-      my_strcpy(word, "---");
+      //my_strcpy(word, "---");
+      *word = "---";
       //	s_copy(word, "---", (ftnlen)3, (ftnlen)3);
     }
     if (*iprint >= 99) {
@@ -3716,8 +3766,8 @@ ftnlen word_len;*/
 } /* prn2lb_ */
 
 /* ======================= The end of prn2lb ============================= */
-/* Subroutine */ int prn3lb_(int *n,double * x,double * f,char * task,int * iprint,integer * info,integer * itfile,integer * iter,integer * nfgv,
-	integer *nintol,integer * nskip,integer * nact,doublereal * sbgnrm,doublereal * time,int * nint,char * word, int *iback,double * stp,double * xstep,int * k,
+/* Subroutine */ int prn3lb_(int *n,double * x,double * f,std::string * task,int * iprint,integer * info,integer * itfile,integer * iter,integer * nfgv,
+	integer *nintol,integer * nskip,integer * nact,doublereal * sbgnrm,doublereal * time,int * nint,std::string * word, int *iback,double * stp,double * xstep,int * k,
 			     double *cachyt, double *sbtime, double *lnscht, ftnlen task_len,ftnlen word_len, int* optfail)/*
 integer *n;
 doublereal *x, *f;
@@ -3839,7 +3889,8 @@ nds.\002,/)";
     --x;
 
     /* Function Body */
-    if (strncmp(task, "ERROR", 5) == 0) {
+    //if (strncmp(task, "ERROR", 5) == 0) {
+    if (task->compare(0,5,"ERROR") == 0) {
 	goto L999;
     }
     if (*iprint >= 0) {
@@ -3885,7 +3936,8 @@ nds.\002,/)";
     }
 L999:
     if (*iprint >= 0) {
-      printf("%s\n", task);
+      //printf("%s\n", task);
+      std::cout << *task << "\n";
       /*	s_wsfe(&io___208);
 	do_fio(&c__1, task, (ftnlen)60);
 	e_wsfe();*/
@@ -4129,7 +4181,7 @@ OX\002)";
 int dtrsl_(doublereal *t, integer *ldt, integer *n, doublereal *b, integer *job, integer *info);
      integer m2;
      doublereal dk;
-     integer js, jy, pointr, ibd, col2;
+     integer js, jy, pointr, ibd=0, col2; // TL - initialize ibd to '0' to avoid uninitialize warnings
 
     /* Fortran I/O blocks */
     /*     cilist io___232 = { 0, 6, 0, fmt_1001, 0 };
@@ -4456,7 +4508,7 @@ int dtrsl_(doublereal *t, integer *ldt, integer *n, doublereal *b, integer *job,
 
 /* ====================== The end of subsm =============================== */
 /* Subroutine */ int dcsrch_(doublereal *f,doublereal * g,doublereal * stp,doublereal * ftol,doublereal * gtol, doublereal *xtol,doublereal * stpmin, doublereal *stpmax,
-	char *task,int * isave,double * dsave,ftnlen task_len)/*
+	std::string *task,int * isave,double * dsave,ftnlen task_len)/*
 doublereal *f, *g, *stp, *ftol, *gtol, *xtol, *stpmin, *stpmax;
 char *task;
 integer *isave;
@@ -4617,34 +4669,44 @@ int dcstep_(doublereal *stx, doublereal *fx, doublereal *dx, doublereal *sty, do
     --isave;
 
     /* Function Body */
-    if (strncmp(task, "START", 5) == 0) {
+    //if (strncmp(task, "START", 5) == 0) {
+    if (task->compare(0,5,"START") == 0) {
 /*        Check the input arguments for errors. */
 	if (*stp < *stpmin) {
-	    my_strcpy(task, "ERROR: STP .LT. STPMIN");
+	    //my_strcpy(task, "ERROR: STP .LT. STPMIN");
+	    *task = "ERROR: STP .LT. STPMIN";
 	}
 	if (*stp > *stpmax) {
-	    my_strcpy(task, "ERROR: STP .GT. STPMAX");
+	    //my_strcpy(task, "ERROR: STP .GT. STPMAX");
+	    *task = "ERROR: STP .GT. STPMAX";
 	}
 	if (*g >= 0.) {
-	    my_strcpy(task, "ERROR: INITIAL G .GE. ZERO");
+	    //my_strcpy(task, "ERROR: INITIAL G .GE. ZERO");
+	    *task = "ERROR: INITIAL G .GE. ZERO";
 	}
 	if (*ftol < 0.) {
-	    my_strcpy(task, "ERROR: FTOL .LT. ZERO");
+	    //my_strcpy(task, "ERROR: FTOL .LT. ZERO");
+	    *task = "ERROR: FTOL .LT. ZERO";
 	}
 	if (*gtol < 0.) {
-	    my_strcpy(task, "ERROR: GTOL .LT. ZERO");
+	    //my_strcpy(task, "ERROR: GTOL .LT. ZERO");
+	    *task = "ERROR: GTOL .LT. ZERO";
 	}
 	if (*xtol < 0.) {
-	  my_strcpy(task, "ERROR: XTOL .LT. ZERO");
+	  //my_strcpy(task, "ERROR: XTOL .LT. ZERO");
+	  *task = "ERROR: XTOL .LT. ZERO";
 	}
 	if (*stpmin < 0.) {
-	  my_strcpy(task, "ERROR: STPMIN .LT. ZERO");
+	  //my_strcpy(task, "ERROR: STPMIN .LT. ZERO");
+	  *task = "ERROR: STPMIN .LT. ZERO";
 	}
 	if (*stpmax < *stpmin) {
-	  my_strcpy(task, "ERROR: STPMAX .LT. STPMIN");
+	  //my_strcpy(task, "ERROR: STPMAX .LT. STPMIN");
+	  *task = "ERROR: STPMAX .LT. STPMIN";
 	}
 	/*        Exit if there are errors on input. */
-	if (strncmp(task, "ERROR", 5) == 0) {
+	//if (strncmp(task, "ERROR", 5) == 0) {
+	if (task->compare(0,5,"ERROR") == 0) {
 	  return 0;
 	}
 	/*        Initialize local variables. */
@@ -4669,8 +4731,8 @@ int dcstep_(doublereal *stx, doublereal *fx, doublereal *dx, doublereal *sty, do
 	gy = ginit;
 	stmin = 0.;
 	stmax = *stp + *stp * 4.;
-	task[0]='F';
-	task[1]='G';
+	(*task)[0]='F';
+	(*task)[1]='G';
 	goto L1000;
     } else {
 /*        Restore local variables. */
@@ -4702,23 +4764,29 @@ int dcstep_(doublereal *stx, doublereal *fx, doublereal *dx, doublereal *sty, do
     }
 /*     Test for warnings. */
     if (brackt && (*stp <= stmin || *stp >= stmax)) {
-      my_strcpy(task, "WARNING: ROUNDING ERRORS PREVENT PROGRESS");
+      //my_strcpy(task, "WARNING: ROUNDING ERRORS PREVENT PROGRESS");
+      *task = "WARNING: ROUNDING ERRORS PREVENT PROGRESS";
     }
     if (brackt && stmax - stmin <= *xtol * stmax) {
-	my_strcpy(task, "WARNING: XTOL TEST SATISFIED");
+	//my_strcpy(task, "WARNING: XTOL TEST SATISFIED");
+	*task = "WARNING: XTOL TEST SATISFIED";
     }
     if (*stp == *stpmax && *f <= ftest && *g <= gtest) {
-	my_strcpy(task, "WARNING: STP = STPMAX");
+	//my_strcpy(task, "WARNING: STP = STPMAX");
+	*task = "WARNING: STP = STPMAX";
     }
     if (*stp == *stpmin && (*f > ftest || *g >= gtest)) {
-	my_strcpy(task, "WARNING: STP = STPMIN");
+	//my_strcpy(task, "WARNING: STP = STPMIN");
+	*task = "WARNING: STP = STPMIN";
     }
 /*     Test for convergence. */
     if (*f <= ftest && abs(*g) <= *gtol * (-ginit)) {
-	my_strcpy(task, "CONVERGENCE");
+	//my_strcpy(task, "CONVERGENCE");
+	*task = "CONVERGENCE";
     }
 /*     Test for termination. */
-    if (strncmp(task, "WARN", 4) == 0 || strncmp(task, "CONV", 4)==0) {
+    //if (strncmp(task, "WARN", 4) == 0 || strncmp(task, "CONV", 4)==0) {
+    if (task->compare(0,4,"WARN") == 0 || task->compare(0,4,"CONV") == 0) {
 	goto L1000;
     }
 /*     A modified function is used to predict the step during the */
@@ -4771,8 +4839,10 @@ int dcstep_(doublereal *stx, doublereal *fx, doublereal *dx, doublereal *sty, do
 	*stp = stx;
     }
 /*     Obtain another function and derivative. */
-    task[0]='F';
-    task[1]='G';
+    //task[0]='F';
+    //task[1]='G';
+    (*task)[0]='F';
+    (*task)[1]='G';
 L1000:
 /*     Save local variables. */
     if (brackt) {
@@ -5939,5 +6009,3 @@ L140:
 L150:
     return 0;
 } /* dtrsl_ */
-
-
