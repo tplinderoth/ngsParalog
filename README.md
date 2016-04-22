@@ -21,5 +21,5 @@ To remove compilation products, run:
 
 ###Author Details
 
-Written by Tyler Linderoth
+Written by Tyler Linderoth  
 Contact: tylerp.linderoth@gmail.com 
