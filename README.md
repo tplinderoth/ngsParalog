@@ -11,12 +11,12 @@ Download ngsParalog with the command:
 
 To install ngsParalog run the commands:
 
-% cd ngsParalog
+% cd ngsParalog  
 % make
 
 To remove compilation products, run:
 
-% cd ngsParalog
+% cd ngsParalog  
 % make clean
 
 ###Author Details
