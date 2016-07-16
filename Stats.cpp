@@ -128,7 +128,6 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 	const int findex = 0; // index position of allele frequency parameter
 	const int mindex = 1; // index position of admixture proportion
 	static double p [npara]; // para[0] = alternate allele frequency, para[1] = admixture proportion
-	static double epsilon; // Phred scaled quality score
 	static double geno_marg; // marginal sum over genotype2 configurations
 	static double loglike; // log likelihood of likelihood function
 	static double genoprior [3];
@@ -168,14 +167,10 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 		{
 			for (k2 = 0; k2 <= 2; ++k2) // sum over genotype2
 			{
+				// take product over all reads for individual
 				indlike[k1][k2] = 0.0;
-				for (readIter = ind_iter->rdat.begin(); readIter != ind_iter->rdat.begin() + ind_iter->cov(); ++readIter) // product over all reads of individual
-				{
-					{
-						epsilon = pow( 10, - (static_cast <double > (readIter->second)) / 10 );
-						indlike[k1][k2] += log(readProb(p[mindex], epsilon, k1, k2, major, minor, readIter->first));
-					}
-				}
+				for (readIter = ind_iter->rdat.begin(); readIter != ind_iter->rdat.begin() + ind_iter->cov(); ++readIter)
+					indlike[k1][k2] += log(readProb(p[mindex], readIter->second, k1, k2, major, minor, readIter->first));
 				if (indlike[k1][k2] > maxlike)
 					maxlike = indlike[k1][k2];
 			}
@@ -190,101 +185,66 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 }
 
 
-double Stats::readProb (const double m, const double err, const int g1, const int g2, const char ref, const char alt, const char obs)
+double Stats::readProb (const double m, const double qscore, const int g1, const int g2, const char major, const char minor, const char obs)
 {
-	/*
-	 * returns P(obs_read | allele1)*P(allele1 | G1,G2) + P(obs_read | allele2)*P(allele2 | G1,G2)
-	 */
+	// returns P(obs_read | quality_score, G1, G2, known minor, known major)
 
-	double pread = 1.0;
+	double err = pow(10, -qscore/10.0);
+	double pread;
+
+	// check for sequencing error
+	if (obs != major && obs != minor)
+		return err;
+
+	// calculate probability of observed major/minor allele
 	if (g1 == 0)
 	{
 		if (g2 == 0)
-		{
-			if (obs==ref)
-				pread = 1.0 - err;
-			else if (obs==alt)
-				pread = err/3.0;
-			else
-				pread = err/3.0;
-		}
+			pread = obs == major ? 1.0 - err : err/3.0;
 		else if (g2 == 1)
-		{
-			if (obs==ref)
-				pread = (1.0-err)*(1.0-0.5*m) + (err*m)/6.0;
-			else if (obs==alt)
-				pread = (1.0-err)*(m/2.0) + (err/3.0)*(1.0-0.5*m);
-			else
-				pread = (err/3.0)*(1.0-0.5*m) + (err*m)/6.0;
-		}
+			pread = obs == major ? (1.0-m)*(1.0-err) + (m/2.0)*((1.0-err) + err/3.0) : (1.0-m)*(err/3.0) + (m/2.0)*((1.0-err) + err/3.0);
 		else if (g2 == 2)
-		{
-			if (obs==ref)
-				pread = (1.0-err)*(1.0-m) + (err*m)/3.0;
-			else if (obs==alt)
-				pread = (1.0-err)*m + (err/3.0)*(1.0-m);
-			else
-				pread = (err/3.0)*(1.0-m) + (err*m)/3.0;
-		}
+			pread = obs == major ? (1.0-err)*(1.0-m) + (err*m)/3.0 : (1.0-err)*m + (err/3.0)*(1.0-m);
 		else
-			genoErr(g1,g2);
+			genoErr(g1,g2); // set fail flag
 	}
 	else if (g1 == 2)
 	{
 		if (g2 == 0)
-		{
-			if (obs==ref)
-				pread = (1.0-err)*m + (err/3.0)*(1.0-m);
-			else if (obs==alt)
-				pread = (1.0-err)*(1.0-m) + (err*m)/3.0;
-			else
-				pread = (err/3.0)*(1.0-m) + (err*m)/3.0;
-		}
+			pread = obs == major ? (1.0-err)*m + (err/3.0)*(1.0-m) : (1.0-err)*(1.0-m) + (err*m)/3.0;
 		else if (g2 == 1)
-		{
-			if (obs==ref)
-				pread = (1.0-err)*(m/2.0) + (err/3.0)*(1.0-0.5*m);
-			else if (obs==alt)
-				pread = (1.0-err)*(1.0-0.5*m) + (err*m)/6.0;
-			else
-				pread = (err/3.0)*(1.0-0.5*m) + (err*m)/6.0;
-		}
+			pread = obs == major ? (1.0-m)*(err/3.0) + (m/2.0)*((1.0-err) + err/3.0) : (1.0-m)*(1.0-err) + (m/2.0)*((1.0-err) + err/3.0);
 		else if (g2 == 2)
-		{
-			if (obs==ref)
-				pread = err/3.0;
-			else if (obs==alt)
-				pread = 1.0-err;
-			else
-				pread = err/3.0;
-		}
+			pread = obs == major ? err/3.0 : 1.0-err;
 		else
-			genoErr(g1,g2);
+			genoErr(g1,g2); // set fail flag
 	}
 	else
-		genoErr(g1,g2);
+		genoErr(g1,g2); // set fail flag
 
 	return pread;
 }
 
 double Stats::genoPrior (const double f, const int g2)
 {
-	/*
-	 * calculates P(G1,G2|f)
-	 */
+	//calculates P(G1,G2|f)
 
-	double prob = 0;
-
-	if (g2 == 0)
-		prob = 0.5 * (1-f) * (1-f);
-	else if (g2 == 1)
-		prob = f * (1-f);
-	else if (g2 == 2)
-		prob = 0.5 * f * f;
-	else
-		fprintf(stderr, "Invalid genotype2: g2 = %i", g2);
-
-	return prob;
+	double p = 0;
+	switch (g2)
+	{
+		case 0 :
+			p = 0.5*(1.0-f)*(1.0-f);
+			break;
+		case 1 :
+			p = f*(1.0-f);
+			break;
+		case 2 :
+			p = 0.5*f*f;
+			break;
+		default:
+			fprintf(stderr, "Invalid genotype2: g2 = %i", g2); // set fail flag
+	}
+	return p;
 }
 
 void Stats::kahanSum(double summand, double* total, double* comp)
