@@ -88,7 +88,8 @@ int doLR (Argparser* params)
 	int rv = 0;
 
 	// set likelihood functions
-	double (*likefn)(const double x[], const void*) = Stats::negLogfn;
+	//double (*likefn)(const double x[], const void*) = Stats::negLogfn;
+	double (*likefn)(const double x[], const void*) = &Stats::negLogfn;
 	void (*dlikefn)(const double x[], double y[], const void*) = NULL; // could adjust this with Argparser _numericGrade member
 
 	// initialize optimization objects
@@ -98,6 +99,7 @@ int doLR (Argparser* params)
 		std::cerr << "Problem encountered in function setOptim for alternate model\n";
 		return 1;
 	}
+
 	Optim nullmodel;
 	if (setOptim(nullmodel, 0, params->verblevel()))
 	{
@@ -152,7 +154,7 @@ int setOptim (Optim& model, bool isalt, int verb)
 	// set optimization start points
 	if (isalt)
 	{
-		if (model.initStartMatrix(dim, startpoints, step))
+		if (model.initStartMatrix(dim, startpoints, step, 1))
 			return false;
 	}
 	else
@@ -224,7 +226,7 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 		lr = Stats::optimLR(nullmodel, altmodel, fn, dfn, neglog, &optfail);
 		if (optfail)
 		{
-			fprintf(stderr, "Skipping %s %d\n", piledat.seqName().c_str(), piledat.position());
+			fprintf(stderr, "Skipping site ...\n");
 			continue;
 		}
 

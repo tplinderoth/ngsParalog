@@ -26,7 +26,7 @@ public:
 	void setRandParam (const int npars); // sets random parameter starting values in [0,1]
 	double& setllh (); // assign value to _llh member
 	void setmlparam (int index, double val); // assign value to _mlpar
-	int initStartMatrix (int nparams, const double* s, const double* step); // set points in start member
+	int initStartMatrix (int nparams, const double* s, const double* step, int extrapoints = 0); // set points in start member
 
 	// return member functions
 	double* lowbounds () const; // return pointer to member _lowb

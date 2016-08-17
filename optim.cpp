@@ -461,7 +461,7 @@ Matrix<double> Optim::genStartMatrix (int nparams, const double* start, const do
 	return vals;
 }
 
-int Optim::initStartMatrix (int nparams, const double* s, const double* step)
+int Optim::initStartMatrix (int nparams, const double* s, const double* step, int extrapoints)
 {
 	if (start.rown() != 0 || start.coln() != 0)
 	{
@@ -488,7 +488,7 @@ int Optim::initStartMatrix (int nparams, const double* s, const double* step)
 			return 1;
 		}
 	}
-	start.allocate(npoints, nparams);
+	start.allocate(npoints+extrapoints, nparams); // add 1 row to place in null condition, add and isalt parameter +1 to npoints parameter
 	Optim::calc2DStart(nparams, npoints, s, step, &start);
 	++_nconditions;
 	return 0;

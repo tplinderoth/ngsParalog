@@ -11,7 +11,28 @@
 #include "parsePileup.h"
 #include "Stats.h"
 #include "bfgs.h"
-#include <iostream> // debug
+//#include <iostream> // debug
+
+readProb::readProb ()
+{
+	// allocate space for storing read probability functions
+	majorprobs.allocate(2,3);
+	minorprobs.allocate(2,3);
+
+	// assign read probability functions
+	majorprobs[0][0]=&Stats::major00;
+	majorprobs[0][1]=&Stats::major01;
+	majorprobs[0][2]=&Stats::major02;
+	majorprobs[1][0]=&Stats::major20;
+	majorprobs[1][1]=&Stats::major21;
+	majorprobs[1][2]=&Stats::major22;
+	minorprobs[0][0]=&Stats::minor00;
+	minorprobs[0][1]=&Stats::minor01;
+	minorprobs[0][2]=&Stats::minor02;
+	minorprobs[1][0]=&Stats::minor20;
+	minorprobs[1][1]=&Stats::minor21;
+	minorprobs[1][2]=&Stats::minor22;
+}
 
 double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], const void*), void (*dfn)(const double x[], double y[], const void*), int islog, int* status)
 {
@@ -20,7 +41,7 @@ double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], c
 	int i = 0;
 	*status = 0;
 
-	// find MLE for f frequency under the null hypothesis
+	// find MLE for alternate allele frequency (f) under the null hypothesis
 
 	// use the sample alternate allele frequency as a starting point
 	null->par[0] = mafguess(static_cast<Pileup*>(null->data), weightcount);
@@ -33,7 +54,7 @@ double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], c
 		// check for optimization failure at multiple start points
 		if (null->isfail())
 		{
-			fprintf(stderr, "Null optimization failed. ");
+			fprintf(stderr, "Null optimization failed for %s %u\n", static_cast<Pileup*>(null->data)->seqName().c_str(), static_cast<Pileup*>(null->data)->position());
 			*status = 1;
 			return 0.0;
 		}
@@ -47,34 +68,19 @@ double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], c
 
 	// find MLE for f and m under the alternative hypothesis
 
+	// set one starting point for the alternate optimization to the null MLE
+	alt->start[alt->start.rown()-1][0] = null->mlparam(0);
+	alt->start[alt->start.rown()-1][1] = 1.0;
+
 	// try multiple arbitrary start points
 	alt->multiOptim(fn, dfn);
 
 	// check for optimization failure at multiple start points
 	if (alt->isfail())
 	{
+		fprintf(stderr, "Alternative optimization failed for %s %u\n", static_cast<Pileup*>(alt->data)->seqName().c_str(), static_cast<Pileup*>(alt->data)->position());
 		*status = 1;
-		alt->setllh() = 1.0/0.0;
-		*(alt->fail()) = 0;
-	}
-
-	// use null MLE estimates as start point
-	alt->par[0] = null->mlparam(0);
-	alt->par[1] = 1.0;
-	like = findmax_bfgs(alt->getDim(), alt->par, alt, fn, dfn, alt->lowbounds(), alt->upbounds(), alt->numbounds(), alt->verblevel(), alt->fail());
-
-	// check for optimization failure from null MLE start point
-	if (alt->isfail() && *status)
-	{
-		fprintf(stderr, "Alternative optimization failed. ");
 		return 0.0;
-	}
-
-	if (like < alt->llh())
-	{
-		alt->setllh() = like;
-		for (i=0; i < alt->getDim(); ++i)
-			alt->setmlparam(i, null->par[i]);
 	}
 
 	// return likelihood ratio
@@ -118,9 +124,7 @@ double Stats::calcLR (const double null, const double alt, bool islog)
 
 double Stats::negLogfn (const double para [], const void *generic_dat)
 {
-	/*
-	 * main likelihood function
-	 */
+	// main likelihood function
 
 	const Optim* optdata = static_cast<const Optim*>(generic_dat);
 	const Pileup* pile = static_cast<const Pileup*>(optdata->data);
@@ -170,7 +174,7 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 				// take product over all reads for individual
 				indlike[k1][k2] = 0.0;
 				for (readIter = ind_iter->rdat.begin(); readIter != ind_iter->rdat.begin() + ind_iter->cov(); ++readIter)
-					indlike[k1][k2] += log(readProb(p[mindex], readIter->second, k1, k2, major, minor, readIter->first));
+					indlike[k1][k2] += log(prRead(p[mindex], readIter->second, k1, k2, major, minor, readIter->first));
 				if (indlike[k1][k2] > maxlike)
 					maxlike = indlike[k1][k2];
 			}
@@ -184,9 +188,96 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 	return -loglike;
 }
 
+double Stats::prRead (double m, double qscore, unsigned int g1, unsigned int g2, char major, char minor, char obs)
+{
+	// returns P(obs_read | quality_score, G1, G2, known minor, known major)
 
+	static readProb p;
+
+	if (g1 > 2 || g2 > 2)
+	{
+		genoErr(g1,g2);
+		return 0.0;
+	}
+	// adjust genotype1 value so that it corresponds to matrix index
+	if (g1 > 0)
+		--g1;
+
+	double err = pow(10, -qscore/10.0);
+	// check for sequencing error
+	if (obs != major && obs != minor)
+		return err/3.0;
+	return (obs == major ? p.majorprobs[g1][g2](m, err) : p.minorprobs[g1][g2](m, err));
+}
+
+// read probability functions for observed major allele
+double Stats::major00 (double m, double err)
+{
+	return 1.0-err;
+}
+
+double Stats::major01 (double m, double err)
+{
+	return (1.0-m)*(1.0-err) + (m/2.0)*((1.0-err) + err/3.0);
+}
+
+double Stats::major02 (double m, double err)
+{
+	return (1.0-err)*(1.0-m) + (err*m)/3.0;
+}
+
+double Stats::major20 (double m, double err)
+{
+	return (1.0-err)*m + (err/3.0)*(1.0-m);
+}
+
+double Stats::major21 (double m, double err)
+{
+	return (1.0-m)*(err/3.0) + (m/2.0)*((1.0-err) + err/3.0);
+}
+
+double Stats::major22 (double m, double err)
+{
+	return err/3.0;
+}
+// end major read probability functions
+
+// read probability functions for observed minor allele
+double Stats::minor00 (double m, double err)
+{
+	return err/3.0;
+}
+
+double Stats::minor01 (double m, double err)
+{
+	return (1.0-m)*(err/3.0) + (m/2.0)*((1.0-err) + err/3.0);
+}
+
+double Stats::minor02 (double m, double err)
+{
+	return (1.0-err)*m + (err/3.0)*(1.0-m);
+}
+
+double Stats::minor20 (double m, double err)
+{
+	return (1.0-err)*(1.0-m) + (err*m)/3.0;
+}
+
+double Stats::minor21 (double m, double err)
+{
+	return (1.0-m)*(1.0-err) + (m/2.0)*((1.0-err) + err/3.0);
+}
+
+double Stats::minor22 (double m, double err)
+{
+	return 1.0-err;
+}
+// end minor read probability functions
+
+/*
 double Stats::readProb (const double m, const double qscore, const int g1, const int g2, const char major, const char minor, const char obs)
 {
+	// using prRead() instead
 	// returns P(obs_read | quality_score, G1, G2, known minor, known major)
 
 	double err = pow(10, -qscore/10.0);
@@ -194,7 +285,7 @@ double Stats::readProb (const double m, const double qscore, const int g1, const
 
 	// check for sequencing error
 	if (obs != major && obs != minor)
-		return err;
+		return err/3.0;
 
 	// calculate probability of observed major/minor allele
 	if (g1 == 0)
@@ -224,6 +315,7 @@ double Stats::readProb (const double m, const double qscore, const int g1, const
 
 	return pread;
 }
+*/
 
 double Stats::genoPrior (const double f, const int g2)
 {
@@ -255,9 +347,9 @@ void Stats::kahanSum(double summand, double* total, double* comp)
 	*total = y;
 }
 
-void Stats::genoErr (const char g1, const char g2)
+void Stats::genoErr (unsigned int g1, unsigned int g2)
 {
-	fprintf(stderr, "Invalid genotype configuration: geno1 = %i, geno2 = %i\n", g1, g2);
+	fprintf(stderr, "Invalid genotype configuration: geno1 = %u, geno2 = %u\n", g1, g2);
 }
 
 
