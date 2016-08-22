@@ -470,7 +470,7 @@ unsigned int Pileup::setn (std::string ins)
 
 	if (ins.empty())
 	{
-		fprintf(stderr,"Empty pileup line passed to Pileup::setn");
+		fprintf(stderr,"Empty pileup line passed to Pileup::setn\n");
 		return 0;
 	}
 
