@@ -126,8 +126,8 @@ int setOptim (Optim& model, bool isalt, int verb)
 
 	int dim = isalt ? 2 : 1; // number of parameters to optimize
 	int optconditions = 6; // number of conditions that must be set to perform bfgs optimization
-	const double startpoints[2] = {0.2, 0.1}; // f & m anchor points for optimization
-	const double step[2] = {0.6, 0.8}; // f & m step distance from optimization anchor
+	const double startpoints[2] = {0.2, 0.05}; // f & m anchor points for optimization
+	const double step[2] = {0.7, 0.48}; // f & m step distance from optimization anchor
 	int nullidx = 0; // index of null parameters in parameter arrays
 	double min [dim]; // minimum parameter values
 	double max [dim]; // maximum paramter values
@@ -223,15 +223,23 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 		altmodel->data = nullmodel->data = &piledat;
 
 		// perform optimization and calculate LR
-		lr = Stats::optimLR(nullmodel, altmodel, fn, dfn, neglog, &optfail);
-		if (optfail)
+		try
 		{
-			fprintf(stderr, "Skipping site ...\n");
-			continue;
+			lr = Stats::optimLR(nullmodel, altmodel, fn, dfn, neglog, &optfail);
+			if (optfail)
+				fprintf(stderr, "Skipping site ...\n");
+			else
+				printLR(piledat.seqName(), piledat.position(), nullmodel, altmodel, lr, os, printML);
 		}
-
-		// dump results
-		printLR(piledat.seqName(), piledat.position(), nullmodel, altmodel, lr, os, printML);
+		catch (const NoDataException& error)
+		{
+			std::cerr << error.what() << " -> skipping site\n";
+		}
+		catch (const BadGenotypeException& error)
+		{
+			std::cerr << error.what() << "\n" << "Terminating program\n";
+			return -1;
+		}
 
 		// fetch next line
 		getline(indat,line);

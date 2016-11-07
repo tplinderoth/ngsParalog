@@ -119,16 +119,18 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 
 	const Optim* optdata = static_cast<const Optim*>(generic_dat);
 	const Pileup* pile = static_cast<const Pileup*>(optdata->data);
+	const int ngeno2 = 3; // number of possible genotypes for G2
 	const int npara = 2; // number parameters in model
 	const int findex = 0; // index position of allele frequency parameter
 	const int mindex = 1; // index position of admixture proportion
 	static double p [npara]; // para[0] = alternate allele frequency, para[1] = admixture proportion
 	static double geno_marg; // marginal sum over genotype2 configurations
 	static double loglike; // log likelihood of likelihood function
-	static double genoprior [3];
-	static int k2;
-	static double indlike [3]; // individual llh for all genotypic configurations
-	static double maxlike; // max individual llh among all genotypic configurations
+	static double genoprior [ngeno2];
+	static double indlike [ngeno2]; // individual llh for all genotypic configurations
+	int k2;
+	double c;
+	unsigned int nind_missing = 0, nread_missing = 0;
 
 	if (optdata->getDim() < npara) // null case; fix m to 1
 	{
@@ -156,41 +158,60 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 	for (ind_iter = pile->seqdat.begin(); ind_iter != pile->seqdat.end(); ++ind_iter) // sum over all individuals
 	{
 		if (ind_iter->cov() < 1) // missing data for individual
+		{
+			++nind_missing;
 			continue;
-		maxlike = -1.0/0.0;
+		}
 		for (k2 = 0; k2 < 3; ++k2) // sum over genotype2
 		{
 			// take product over all reads for individual
 			indlike[k2] = 0.0;
+			nread_missing = 0;
 			for (readIter = ind_iter->rdat.begin(); readIter != ind_iter->rdat.begin() + ind_iter->cov(); ++readIter)
-				indlike[k2] += log(prRead(p[mindex], readIter->second, k2, major, minor, readIter->first));
-			if (indlike[k2] > maxlike)
-				maxlike = indlike[k2];
+			{
+				if (readIter->first != major && readIter->first != minor)
+				{
+					++nread_missing;
+					continue; // assume major and minor are known
+				}
+				indlike[k2] += log(prRead(p[mindex], readIter->second, k2, major, readIter->first));
+			}
+			// check if all reads for individual were non major/minor (missing data)
+			if (nread_missing >= ind_iter->cov())
+			{
+				++nind_missing;
+				continue;
+			}
 		}
 		geno_marg = 0.0;
+		c = maxlike(indlike, ngeno2);
 		for (k2 = 0; k2 <= 2; ++k2)
-			geno_marg += exp(indlike[k2] - maxlike) * genoprior[k2]; // switch back to probability space
-		loglike += log(geno_marg) + maxlike;
+			geno_marg += exp(indlike[k2] - c) * genoprior[k2]; // switch back to probability space
+		loglike += log(geno_marg) + c;
 	}
+	if (nind_missing >= pile->nInd())
+		throw NoDataException(pile->seqName().c_str(), pile->position());
 	return -loglike;
 }
 
-double Stats::prRead (double m, double qscore, unsigned int g2, char major, char minor, char obs)
+double Stats::maxlike (const double* likes, const int dim)
+{
+	double max = likes[0];
+	for (int i=1; i<dim; ++i)
+		if (likes[i] > max) max = likes[i];
+	return max;
+}
+
+double Stats::prRead (double m, double qscore, unsigned int g2, char major, char obs)
 {
 	// returns P(obs_read | quality_score, G1, G2, known minor, known major)
 
 	static readProb p;
 
 	if (g2 > 2)
-	{
-		genoErr(0,g2);
-		return 0.0;
-	}
+		throw BadGenotypeException(g2, "Stats::prRead");
 
 	double err = pow(10, -qscore/10.0);
-	// check for sequencing error
-	if (obs != major && obs != minor)
-		return err/3.0;
 	return (obs == major ? p.majorprobs[g2](m, err) : p.minorprobs[g2](m, err));
 }
 
@@ -202,94 +223,31 @@ double Stats::major00 (double m, double err)
 
 double Stats::major01 (double m, double err)
 {
-	return (1.0-m)*(1.0-err) + (m/2.0)*((1.0-err) + err/3.0);
+	return (1.0-m)*(1.0-err) + m*0.5;
 }
 
 double Stats::major02 (double m, double err)
 {
-	return (1.0-err)*(1.0-m) + (err*m)/3.0;
+	return (1.0-m)*(1.0-err) + m*err;
 }
-
-/*
-// not used because major allele is assumed to always come from G1
-double Stats::major20 (double m, double err)
-{
-	return (1.0-err)*m + (err/3.0)*(1.0-m);
-}
-
-double Stats::major21 (double m, double err)
-{
-	return (1.0-m)*(err/3.0) + (m/2.0)*((1.0-err) + err/3.0);
-}
-
-double Stats::major22 (double m, double err)
-{
-	return err/3.0;
-}
-*/
 // end major read probability functions
 
 // read probability functions for observed minor allele
 double Stats::minor00 (double m, double err)
 {
-	return err/3.0;
+	return err;
 }
 
 double Stats::minor01 (double m, double err)
 {
-	return (1.0-m)*(err/3.0) + (m/2.0)*((1.0-err) + err/3.0);
+	return (1.0-m)*err + m*0.5;
 }
 
 double Stats::minor02 (double m, double err)
 {
-	return (1.0-err)*m + (err/3.0)*(1.0-m);
+	return (1.0-m)*err + m*(1.0-err);
 }
-
-/*
-// not used because major allele is assumed to always come from G1
-double Stats::minor20 (double m, double err)
-{
-	return (1.0-err)*(1.0-m) + (err*m)/3.0;
-}
-
-double Stats::minor21 (double m, double err)
-{
-	return (1.0-m)*(1.0-err) + (m/2.0)*((1.0-err) + err/3.0);
-}
-
-double Stats::minor22 (double m, double err)
-{
-	return 1.0-err;
-}
-*/
 // end minor read probability functions
-
-/*
-double Stats::readProb (const double m, const double qscore, const int g1, const int g2, const char major, const char minor, const char obs)
-{
-	// using prRead() instead
-	// returns P(obs_read | quality_score, G1, G2, known minor, known major)
-
-	double err = pow(10, -qscore/10.0);
-	double pread;
-
-	// check for sequencing error
-	if (obs != major && obs != minor)
-		return err/3.0;
-
-	// calculate probability of observed major/minor allele assuming the major allele comes from G1
-	if (g2 == 0)
-		pread = obs == major ? 1.0 - err : err/3.0;
-	else if (g2 == 1)
-		pread = obs == major ? (1.0-m)*(1.0-err) + (m/2.0)*((1.0-err) + err/3.0) : (1.0-m)*(err/3.0) + (m/2.0)*((1.0-err) + err/3.0);
-	else if (g2 == 2)
-		pread = obs == major ? (1.0-err)*(1.0-m) + (err*m)/3.0 : (1.0-err)*m + (err/3.0)*(1.0-m);
-	else
-		genoErr(g1,g2); // set fail flag
-
-	return pread;
-}
-*/
 
 double Stats::genoPrior (const double f, const int g2)
 {
@@ -308,7 +266,7 @@ double Stats::genoPrior (const double f, const int g2)
 			p = f*f;
 			break;
 		default:
-			fprintf(stderr, "Invalid genotype2: g2 = %i", g2); // set fail flag
+			throw BadGenotypeException(g2, "Stats::genoPrior");
 	}
 	return p;
 }
@@ -321,11 +279,11 @@ void Stats::kahanSum(double summand, double* total, double* comp)
 	*total = y;
 }
 
-void Stats::genoErr (unsigned int g1, unsigned int g2)
-{
-	fprintf(stderr, "Invalid genotype configuration: geno1 = %u, geno2 = %u\n", g1, g2);
-}
+NoDataException::NoDataException (const char* id, const unsigned int pos)
+	: std::runtime_error(ExceptionFormatter() << id << " " << pos << " has no data") {}
 
+BadGenotypeException::BadGenotypeException (const int geno2, const char* routine)
+	: std::logic_error(ExceptionFormatter() << "Genotype2 has invalid value " << geno2 << " in call to " <<  routine) {}
 
 /*
  * The following code for calculating an analytic gradient is deprecated - switched to numeric gradient.

@@ -7,7 +7,7 @@
 #include <iostream>
 #include "Argparser.h"
 
-const char* version = "1.2.0"; // 3 Nov 2016
+const char* version = "1.3.0"; // 7 Nov 2016
 
 // FUNCTION PROTOTYPES
 

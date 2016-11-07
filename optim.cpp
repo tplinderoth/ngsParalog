@@ -350,39 +350,6 @@ bool Optim::mod2DStartVal (int nparams, const double* start, const double* step,
 	return true;
 }
 
-/*
-template <class T> int Optim::guess2DStartVal (Matrix<T>* m, const T* guess, const T* p1lim, const T* p2lim, unsigned int npar1, unsigned int npar2)
-{
-	if (m->rown() != npar1*npar2 || m->coln() != 2)
-	{
-		fprintf(stderr, "Matrix must be of size npar1*npar2 X 2 in call to Optim::freq2DStartVal\n");
-		return -1;
-	}
-	T p1inc = (p1lim[1] - p1lim[0]) / (npar1-1);
-	T p2inc = (p2lim[1] - p2lim[0]) / (npar2-1);
-	T p1start = guess[0];
-	T p2start = guess[1];
-	while (p1start - p1inc >= p1lim[0])
-		p1start -= p1inc;
-	while (p2start - p2inc >= p2lim[0])
-		p2start -= p2inc;
-	int j = 0;
-	int k = 0;
-	for (unsigned int i = 0; i < m->rown(); ++i)
-	{
-		if (!i % npar1)
-			j = 0;
-		if (!j % npar2)
-			k = 0;
-		(*m)[i][0] = p1start + j*p1inc;
-		(*m)[i][1] = p2start + k*p2inc;
-		++j;
-		++k;
-	}
-	return 0;
-}
-*/
-
 int Optim::guess2DStartVal (Matrix<double>* m, const double* guess , const double* p1lim, const double* p2lim, unsigned int npar1, unsigned int npar2)
 {
 	/*
@@ -544,7 +511,7 @@ double Optim::multiOptim (double (*fn)(const double x[], const void*), void (*df
 /*
  * run optimization at all start points using L-BFGS-B algorithm
  * fn is function to be minimized
- * dfn is the funtion to calculate the gradient of fn, dfn=NULL uses numeric gradient
+ * dfn is the function to calculate the gradient of fn, dfn=NULL uses numeric gradient
  */
 	_fail = 0;
 	if (_dim > 2)
