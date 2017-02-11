@@ -37,7 +37,8 @@ pgtol is size of gradient on exit
  */
 #define MVAL 10 // 10
 #define FACTR 1.0e6 // 1.0e6
-#define PGTOL 1.0e-03 // 1.0e-3
+#define PGTOL 2.0e-03 // 1.0e-3
+
 
 /*
  nbd is a vector of integers of dimension numpars.
