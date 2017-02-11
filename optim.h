@@ -5,8 +5,17 @@
 #define OPTIM_H_
 
 #include "Matrix.h"
+#include "generalUtils.h"
+#include <stdexcept>
 
 // CLASS DEFINITIONS
+
+class OptimFailureException : public std::runtime_error
+{
+public:
+	OptimFailureException ();
+};
+
 class Optim
 {
 public:
@@ -14,18 +23,19 @@ public:
 	~Optim ();
 
 	// set member functions
-	bool setParN (int n, bool init = true); // sets number of parameters to optimize
-	bool setBoundCntrl (const double upperb [], int usize, const double lowerb [], int lsize, const int constraint [], int bsize); // sets boundary conditions
-	bool setUpBound (const double u [], const int usize); // sets upper bound on params
-	bool setLowBound (const double lo [], const int lsize); // sets lower bound on params
-	bool setBound (const double upb [], int usize, const double lob [], int lsize); // sets upper and lower bounds
-	bool setBoundCon (const int btype [], const int bsize); // sets the bounds constraint
+	bool setParN (unsigned int n, bool init = true); // sets number of parameters to optimize
+	bool setBoundCntrl (const double upperb [], const double lowerb [],
+			const unsigned int constraint [], const unsigned int dim); // sets boundary conditions
+	bool setUpBound (const double u [], const unsigned int usize); // sets upper bound on params
+	bool setLowBound (const double lo [], const unsigned int lsize); // sets lower bound on params
+	bool setBound (const double upb [], const double lob [], const int dim); // sets upper and lower bounds
+	bool setBoundCon (const unsigned int btype [], const unsigned int bsize); // sets the bounds constraint
 	void setData (void *); // sets data used by likelihood function
 	void setVerbose (int); // sets the verbosity of optimization
-	bool setParam (const int npars, double* vals = NULL); // sets parameter starting values
-	void setRandParam (const int npars); // sets random parameter starting values in [0,1]
+	bool setParam (const unsigned int npars, double* vals = NULL); // sets parameter starting values
+	void setRandParam (const unsigned int npars); // sets random parameter starting values in [0,1]
 	double& setllh (); // assign value to _llh member
-	void setmlparam (int index, double val); // assign value to _mlpar
+	void setmlparam (const unsigned int index, double val); // assign value to _mlpar
 	int initStartMatrix (int nparams, const double* s, const double* step, int extrapoints = 0); // set points in start member
 
 	// return member functions
@@ -38,8 +48,8 @@ public:
 	double llh() const; // returns member _llh
 	int conditions() const; // returns member _ncoditions
 	time_t getSeed();
-	double getParam (int index); // returns parameter values
-	double mlparam (int index); // returns ML estimate of parameters
+	double getParam (const unsigned int index); // returns parameter values
+	double mlparam (const unsigned int index); // returns ML estimate of parameters
 	int getDim() const; // returns member _dim
 
 	// operational functions
@@ -58,7 +68,7 @@ public:
 private:
 	// functions
 	static int numPoints (double start, double step); // finds number of points that lie in the interval [0,1] given a step size
-	template<class T> void cpyConditions (int olddim, int newdim, T* oldarr); // copies existing optimization info when dimension is changed
+	template<class T> void cpyConditions (unsigned int olddim, unsigned int newdim, T* oldarr); // copies existing optimization info when dimension is changed
 	template <class T> static void calc2DStart(int nparams, unsigned int npoints, const double* start, const double* step, Matrix<T>* vals);
 	void initmlparam(int n, double* vals = NULL);
 	void seed();
@@ -67,7 +77,7 @@ private:
 	double* _mlpar; // maximum likelihood parameters
 	double* _upb; // upper bounds on the parameters
 	double* _lowb; // lower bounds on parameters
-	int _dim; // number of parameters to optimize
+	unsigned int _dim; // number of parameters to optimize
 	int* _nbounds; // boundary constraint option
 	int _verb; // amount of output by optimization
 	int _fail; // whether an error occurred in optimization
