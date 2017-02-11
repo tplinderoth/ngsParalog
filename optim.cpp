@@ -6,19 +6,20 @@
 #include <cstring>
 #include <time.h>
 #include <math.h>
+#include <limits>
 #include "optim.h"
 #include "bfgs.h"
 // #include <iostream> // debug
 
 // Optim class constructor
 Optim::Optim (int noise)
-	: par(0),
-	  data(0),
-	  _mlpar(0),
-	  _upb(0),
-	  _lowb(0),
+	: par(NULL),
+	  data(NULL),
+	  _mlpar(NULL),
+	  _upb(NULL),
+	  _lowb(NULL),
 	  _dim(0),
-	  _nbounds(0),
+	  _nbounds(NULL),
 	  _fail(false),
 	  _nconditions(0),
 	  _llh(0.0),
@@ -58,16 +59,16 @@ Optim::~Optim()
 }
 
 
-template< class T > void Optim::cpyConditions (int olddim, int newdim, T* oldarr)
+template< class T > void Optim::cpyConditions (unsigned int olddim, unsigned int newdim, T* oldarr)
 {
 // copies existing optimization info when dimension is changed
 
-	int arrsize;
+	unsigned int arrsize;
 	if (newdim < olddim)
-		arrsize = newdim * sizeof(T);
+		arrsize = newdim * static_cast<unsigned int>(sizeof(T));
 	else
-		arrsize = olddim * sizeof(T);
-	T newarr[newdim];
+		arrsize = olddim * static_cast<unsigned int>(sizeof(T));
+	T* newarr = new T[newdim];
 	memcpy(newarr, oldarr, arrsize);
 	delete [] oldarr;
 	oldarr = new T[newdim];
@@ -77,9 +78,10 @@ template< class T > void Optim::cpyConditions (int olddim, int newdim, T* oldarr
 		for (int i = olddim; i < newdim; i++)
 			oldarr[i] = 0;
 	}
+	delete [] newarr;
 }
 
-bool Optim::setParN (int n, bool init)
+bool Optim::setParN (unsigned int n, bool init)
 {
 // gets number of parameters to optimize
 
@@ -112,18 +114,18 @@ bool Optim::setParN (int n, bool init)
 }
 
 
-bool Optim::setBoundCntrl (const double upperb [], int usize, const double lowerb [], int lsize, const int constraint [], int bsize)
+bool Optim::setBoundCntrl (const double upperb [], const double lowerb [], const unsigned int constraint [], const unsigned int dim)
 {
 // sets boundary conditions for optimization
 
-	if (!setBoundCon(constraint, bsize))
+	if (!setBoundCon(constraint, dim))
 		return false;
-	if (!setBound(upperb, usize, lowerb, lsize))
+	if (!setBound(upperb, lowerb, dim))
 			return false;
 	return true;
 }
 
-bool Optim::setUpBound (const double u [], const int usize)
+bool Optim::setUpBound (const double u [], const unsigned int usize)
 {
 // sets the upper bound on parameters to optimize
 
@@ -134,7 +136,7 @@ bool Optim::setUpBound (const double u [], const int usize)
 			_upb = new double [_dim];
 			++_nconditions;
 		}
-		for (int i = 0; i < _dim; ++i)
+		for (unsigned int i = 0; i < _dim; ++i)
 			_upb[i] = u[i];
 	}
 	else
@@ -146,7 +148,7 @@ bool Optim::setUpBound (const double u [], const int usize)
 	return true;
 }
 
-bool Optim::setLowBound (const double lo [], const int lsize)
+bool Optim::setLowBound (const double lo [], const unsigned int lsize)
 {
 // sets the lower bound on parameters to optimize
 
@@ -157,7 +159,7 @@ bool Optim::setLowBound (const double lo [], const int lsize)
 			_lowb = new double [_dim];
 			++_nconditions;
 		}
-		for (int i = 0; i < _dim; ++i)
+		for (unsigned int i = 0; i < _dim; ++i)
 			_lowb[i] = lo[i];
 
 	}
@@ -186,18 +188,18 @@ void Optim::initmlparam(int n, double* vals)
 		fprintf(stderr, "warning: Optim::dim not set in call to Optim::initmlparam\n");
 }
 
-bool Optim::setBound (const double upb [], int usize, const double lob [], int lsize)
+bool Optim::setBound (const double upb [], const double lob [], const int dim)
 {
 // sets the upper and lower boundaries on parameters to optimize
 
-	if (!setUpBound(upb, usize)) // set upper bound
+	if (!setUpBound(upb, dim)) // set upper bound
 		return false;
-	if (!setLowBound(lob, lsize)) // set lower bound
+	if (!setLowBound(lob, dim)) // set lower bound
 		return false;
 	return true;
 }
 
-bool Optim::setBoundCon (const int btype [], const int bsize)
+bool Optim::setBoundCon (const unsigned int btype [], const unsigned int bsize)
 {
 // sets the number of boundaries for each parameter
 
@@ -205,10 +207,10 @@ bool Optim::setBoundCon (const int btype [], const int bsize)
 	{
 		if (!_nbounds)
 		{
-			_nbounds = new int [_dim];
+			_nbounds = new int[_dim];
 			++_nconditions;
 		}
-		for (int i = 0; i < _dim; ++i)
+		for (unsigned int i = 0; i < _dim; ++i)
 			_nbounds[i] = btype[i];
 	}
 	else
@@ -239,17 +241,17 @@ void Optim::setData (void* x)
 	}
 }
 
-bool Optim::setParam (const int npars, double* vals)
+bool Optim::setParam (const unsigned int npars, double* vals)
 {
 // sets user defined starting parameter values
 	if (npars == _dim)
 	{
 		if (!par)
 		{
-			par = new double [_dim];
+			par = new double[_dim];
 			++_nconditions;
 		}
-		for (int i = 0; i < _dim; ++i)
+		for (unsigned int i = 0; i < _dim; ++i)
 			par[i] = vals ? vals[i] : 0;
 		if (!_mlpar)
 			initmlparam(_dim);
@@ -263,7 +265,7 @@ bool Optim::setParam (const int npars, double* vals)
 	return true;
 }
 
-void Optim::setRandParam (const int npars)
+void Optim::setRandParam (const unsigned int npars)
 {
 // sets random starting parameter values in [0,1]
 
@@ -276,7 +278,7 @@ void Optim::setRandParam (const int npars)
 			par = new double [_dim];
 			++_nconditions;
 		}
-		for (int i = 0; i < _dim; ++i)
+		for (unsigned int i = 0; i < _dim; ++i)
 			par[i] = (static_cast <double> (rand()) / (RAND_MAX) );
 	}
 	else
@@ -499,9 +501,9 @@ int Optim::numPoints (double start, double step)
 	{
 		double begin = 1 - start;
 		if ( fmod(begin, step) == 0 )
-			npts = begin/step + 1;
+			npts = static_cast<int>(begin/step + 1.0);
 		else
-			npts = ceil(begin/step);
+			npts = static_cast<int>(ceil(begin/step));
 	}
 	return npts;
 }
@@ -513,20 +515,20 @@ double Optim::multiOptim (double (*fn)(const double x[], const void*), void (*df
  * fn is function to be minimized
  * dfn is the function to calculate the gradient of fn, dfn=NULL uses numeric gradient
  */
-	_fail = 0;
 	if (_dim > 2)
-		fprintf(stderr, "Too many parameters for Optim::multiOptim\n");
-	if (data == NULL)
-		fprintf(stderr, "Optim data member not set in call to Optim::multiOptim\n");
-	if (_fail)
 	{
-		_llh = 0.0;
 		_fail = 1;
-		return _llh;
+		throw PreConditionException(ExceptionFormatter() << "_dim cannot be greater than 2 in call to Optim::" << __func__ << "()");
 	}
-	double max = 1.0/0.0;
+	if (data == NULL)
+	{
+		_fail = 1;
+		throw PreConditionException(ExceptionFormatter() << "Member data null in call to Optim::" << __func__ << "()");
+	}
+
+	double max = std::numeric_limits<double>::max();
 	int success = 0;
-	Matrix<double>* startval = 0;
+	Matrix<double>* startval = NULL;
 	if (s)
 		startval = s;
 	else
@@ -537,7 +539,7 @@ double Optim::multiOptim (double (*fn)(const double x[], const void*), void (*df
 	static size_t point = 0;
 	point = startval->getSubRow() ? startval->getSubRow() : startval->rown();
 	param = startval->getSubCol() ? startval->getSubCol() : startval->coln();
-	double inpar [param];
+	double* inpar = new double[param];
 	while (i < point)
 	{
 		for (j = 0; j < param; j++)
@@ -546,7 +548,7 @@ double Optim::multiOptim (double (*fn)(const double x[], const void*), void (*df
 		_llh = findmax_bfgs(_dim, par, this, fn, dfn, _lowb, _upb, _nbounds, _verb, &_fail);
 		if (_llh < max && !_fail)
 		{
-			++success;
+			++success; // denotes successful optimization for at least one set of parameters
 			max = _llh;
 			for (j = 0; j < param; ++j)
 				_mlpar[j] = par[j];
@@ -554,7 +556,11 @@ double Optim::multiOptim (double (*fn)(const double x[], const void*), void (*df
 		_fail = 0;
 		++i;
 	}
-	_fail = success ? 0 : 1;
+	if (!success)
+	{
+		_fail = 1;
+		throw OptimFailureException();
+	}
 	_llh = max;
 	return _llh;
 }
@@ -584,53 +590,58 @@ double Optim::llh () const
 	return _llh;
 }
 
-double Optim::getParam (int index)
+double Optim::getParam (const unsigned int index)
 {
 	if (par)
 	{
-		if (index < _dim && index >= 0)
-			return par[index];
-		else
-			fprintf(stderr, "index %i is out of parameter array range in Optim::getParam\n", index);
-	}
-	else
-		fprintf(stderr, "parameter array not set in call to Optim::getParam\n");
-	_fail = 1;
-	return -1.0/0.0;
-}
-
-double Optim::mlparam (int index)
-{
-	if (_mlpar)
-	{
-		if (index < _dim && index >= 0)
-			return _mlpar[index];
-		else
-			fprintf(stderr, "index %i is out of ML parameter array range in Optim::mlparam\n", index);
-	}
-	else
-		fprintf(stderr, "parameter array not set in call to Optim::mlparam\n");
-	_fail = 1;
-	return 0.0;
-}
-
-void Optim::setmlparam (int index, double val)
-{
-	if (_mlpar)
-	{
-		if (index < _dim && index >= 0)
-			_mlpar[index] = val;
-		else
+		if (index > _dim)
 		{
-			fprintf(stderr, "index %i is out of ML parameter array range in Optim::mlparam\n", index);
 			_fail = 1;
+			throw std::out_of_range("Index passed to Optim::getParam() is out of parameter array range");
 		}
 	}
 	else
 	{
-		fprintf(stderr, "_mlparam not initiated in call to Optim::mlparam\n");
 		_fail = 1;
+		throw std::logic_error("Attempt to access unset parameters by Optim::getParam()");
 	}
+	return par[index];
+}
+
+double Optim::mlparam (const unsigned int index)
+{
+	if (_mlpar)
+	{
+		if (index > _dim)
+		{
+			_fail = 1;
+			throw std::out_of_range("Index passed to Optim::mlparam() is out of parameter array range");
+		}
+	}
+	else
+	{
+		_fail = 1;
+		throw std::logic_error("Attempt to access unset parameters by Optim::mlparam()");
+	}
+	return _mlpar[index];
+}
+
+void Optim::setmlparam (const unsigned int index, double val)
+{
+	if (_mlpar)
+	{
+		if (index > _dim)
+		{
+			_fail = 1;
+			throw std::out_of_range("Index passed to Optim::setmlparam() is out of parameter array range");
+		}
+	}
+	else
+	{
+		_fail = 1;
+		throw std::logic_error("Attempt to set value to null parameter pointer by Optim::setmlparam()");
+	}
+	_mlpar[index] = val;
 }
 
 double& Optim::setllh ()
@@ -657,3 +668,6 @@ int* Optim::numbounds () const
 {
 	return _nbounds;
 }
+
+OptimFailureException::OptimFailureException()
+	: std::runtime_error("Parameter optimization failure") {}
