@@ -27,12 +27,6 @@ public:
 	NoDataException (const char* id, const unsigned int pos);
 };
 
-class BadGenotypeException : public std::logic_error
-{
-public:
-	BadGenotypeException (const int geno2, const char* routine);
-};
-
 namespace Stats {
 double mafguess (Pileup* pile, bool wt);
 double calcLR (const double null, const double alt, bool islog);
@@ -52,7 +46,6 @@ double major02 (double m, double err);
 double minor00 (double m, double err);
 double minor01 (double m, double err);
 double minor02 (double m, double err);
-
-};
+}
 
 #endif /* STATS_H_ */
