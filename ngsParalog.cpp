@@ -108,8 +108,21 @@ int doLR (Argparser* params)
 	}
 
 	// analyze pileup data
-	rv = processPileup(params->input(), params->output(), &altmodel, &nullmodel, likefn, dlikefn, params->offsetQ(),
-			params->minQ(), params->mincov(), params->minind(), params->printML(), params->verblevel());
+	try
+	{
+		rv = processPileup(params->input(), params->output(), &altmodel, &nullmodel, likefn, dlikefn, params->offsetQ(),
+				params->minQ(), params->mincov(), params->minind(), params->printML());
+	}
+	catch (PileupException& error)
+	{
+		std::cerr << error.what() << "\nGracefully terminating\n";
+		return -1;
+	}
+	catch (std::exception& error)
+	{
+		std::cerr << error.what() << "\nGracefully terminating\n";
+		return -1;
+	}
 
 	return rv;
 }
@@ -124,15 +137,15 @@ int setOptim (Optim& model, bool isalt, int verb)
 {
 // sets up optim objects
 
-	int dim = isalt ? 2 : 1; // number of parameters to optimize
+	const unsigned int dim = isalt ? 2 : 1; // number of parameters to optimize
 	int optconditions = 6; // number of conditions that must be set to perform bfgs optimization
 	const double startpoints[2] = {0.2, 0.05}; // f & m anchor points for optimization
 	const double step[2] = {0.7, 0.48}; // f & m step distance from optimization anchor
 	int nullidx = 0; // index of null parameters in parameter arrays
-	double min [dim]; // minimum parameter values
-	double max [dim]; // maximum paramter values
-	int nbd [dim]; // number of boundary constraints
-	int i = 0;
+	double* min = new double[dim]; // minimum parameter values
+	double* max = new double[dim]; // maximum parameter values
+	unsigned int* nbd = new unsigned int[dim]; // number of boundary conditions
+	unsigned int i = 0;
 
 	// set boundary values
 	for (i = 0; i < dim; i++)
@@ -145,7 +158,7 @@ int setOptim (Optim& model, bool isalt, int verb)
 	// set values for optim
 	if (!model.setParN(dim))
 		return false;
-	if (!model.setBoundCntrl(max, dim, min, dim, nbd, dim))
+	if (!model.setBoundCntrl(max, min, nbd, dim))
 		return false;
 
 	// set amount of output
@@ -170,13 +183,18 @@ int setOptim (Optim& model, bool isalt, int verb)
 		return false;
 	}
 
+	delete [] min;
+	delete [] max;
+	delete [] nbd;
+
 	return 0;
 }
 
 int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim* nullmodel, double (*fn)(const double x[], const void*),
 		void (*dfn)(const double x[], double y[], const void*), const double qoffset, const double minq, const unsigned int mindepth,
-		const unsigned int minind, int printML, int verbose)
+		const unsigned int minind, int printML)
 {
+	const char delimiter = '\t'; // assume pileup is tab delimited
 	const bool weightcount = true;
 	const int neglog = 1; // 1 = likelihoods are -log, otherwise 0
 	double lr = 0.0;
@@ -188,7 +206,10 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 	piledat.setQualCode(qoffset);
 	piledat.setMinQ(minq);
 	getline(indat, line);
-	piledat.setn(line);
+	piledat.setn(line, delimiter);
+
+	// calculate sequence ID buffer size for pretty printing
+	unsigned int idbuffer = calcIdBuffer(Pileup::idSize(line, delimiter));
 
 	// check that there at at least minind individuals in pileup
 	if (minind > piledat.nInd())
@@ -201,7 +222,7 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 	while (!line.empty())
 	{
 		// store data in Pileup object
-		piledat.getSeqDat(line);
+		piledat.getSeqDat(line, delimiter);
 
 		if (piledat.fail())
 		{
@@ -226,24 +247,20 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 		try
 		{
 			lr = Stats::optimLR(nullmodel, altmodel, fn, dfn, neglog, &optfail);
-			if (optfail)
-				fprintf(stderr, "Skipping site ...\n");
-			else
-				printLR(piledat.seqName(), piledat.position(), nullmodel, altmodel, lr, os, printML);
+			printLR(piledat.seqName(), piledat.position(), nullmodel, altmodel, lr, os, idbuffer, printML);
+		}
+		catch (const OptimFailureException& error)
+		{
+			std::cerr << error.what() << " -> skipping " << piledat.seqName() << " " << piledat.position() << "\n";
 		}
 		catch (const NoDataException& error)
 		{
 			std::cerr << error.what() << " -> skipping site\n";
 		}
-		catch (const BadGenotypeException& error)
-		{
-			std::cerr << error.what() << "\n" << "Terminating program\n";
-			return -1;
-		}
-
 		// fetch next line
 		getline(indat,line);
 	}
+
 	return 0;
 }
 
@@ -260,22 +277,18 @@ unsigned int numCovered (const Pileup* data, const unsigned int mincov)
 }
 
 
-void printLR (const std::string chr, const unsigned int pos, Optim* null, Optim* alt, double lr, std::ostream& os, bool printml)
+void printLR (const std::string chr, const unsigned int pos, Optim* null, Optim* alt, double lr, std::ostream& os,
+		const unsigned int nameBuffer, bool printml)
 {
-// printVal prints output
-
-	static unsigned int namesz = 0;
-	double thresh = -1e-07;
-	int prec = 8;
-	static int i = 0;
-	if (namesz == 0)
-		namesz = nameLength(chr);
+	const double thresh = -1e-07;
+	const int prec = 8;
+	int i = 0;
 	if (lr < 0.0) // prevents reporting negative zero (numerical noise)
 	{
 		if (lr > thresh)
 			lr = 0.0;
 	}
-	os << std::setw(namesz) << std::left << chr
+	os << std::setw(nameBuffer) << std::left << chr
 			<< '\t' << std::setw(12) << pos
 			<< '\t' << std::fixed << std::setprecision(prec) << null->llh()
 			<< '\t' << std::fixed << std::setprecision(prec) << alt->llh()
@@ -286,10 +299,10 @@ void printLR (const std::string chr, const unsigned int pos, Optim* null, Optim*
 	os << '\n';
 }
 
-unsigned int nameLength (std::string name)
+unsigned int calcIdBuffer (const unsigned int nameLength)
 {
-	int extra = 9;
-	unsigned int len = name.length() + extra;
+	const int extra = 9;
+	unsigned int len = nameLength + extra;
 	while (len%8)
 		++len;
 	return len;
