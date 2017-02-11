@@ -4,6 +4,7 @@
 #include <algorithm> // sort
 #include <math.h> // pow
 #include <map>
+#include <cstring> // strcpy
 #include "parsePileup.h"
 #include "generalUtils.h"
 
@@ -55,16 +56,17 @@ std::string& SiteData::id()
 
 // Pileup class constructor
 Pileup::Pileup ()
-	: _pos(0),
+	: _fail(0),
+	  _name(""),
+	  _pos(0),
+	  _refallele('\0'),
 	  _encode(33.0),
 	  _minQ(13.0),
-	  _fail(0),
 	  _nind(0),
 	  _depthReserve(20),
 	  _numalt(0),
 	  _numref(0),
 	  _alleles(),
-	  _refallele('\0'),
 	  _poolsz(2)
 {
 	for (int i=0; i<2; ++i)
@@ -93,75 +95,39 @@ void Pileup::setMinQ (double q)
 	_minQ = q;
 }
 
-int Pileup::getMinQ ()
+double Pileup::getMinQ ()
 {
  return _minQ;
 }
 
-int Pileup::getQualCode ()
+double Pileup::getQualCode ()
 {
 	return _encode;
 }
 
 // Pileup::getSeqDat extracts information from pileup line
-int Pileup::getSeqDat (const std::string& pile)
+int Pileup::getSeqDat (const std::string& pile, const char delim)
 {
 	int i;
+	std::vector<std::string> pvec;
+	tokenizeLine(pile, &pvec, delim);
 
-	if (pile.empty())
-	{
-		fprintf(stderr, "No pileup line supplied to Pileup::getSeqDat\n");
-		_fail = 1;
-	}
+	// extract sequence id, position, and reference allele
+	setBasicSiteInfo(pvec);
 
-	std::vector<std::string> pvec = split(pile, '\t');
-
-	if (pvec.size() == 1)
-	{
-		fprintf(stderr, "Piluep line couldn't be split by Pileup::getSeqDat; check delimiter\n");
-		_fail = 1;
-	}
-
-	// assign name
-	if (!pvec[0].empty())
-		_name = pvec[0];
-	else
-	{
-		fprintf(stderr, "Attempt to assign empty container to name by Pileup::getSeqDat\n");
-		_fail = 1;
-	}
-
-	// assign position
-	if (!pvec[1].empty())
-		_pos = atoi(pvec[1].c_str());
-	else
-	{
-		fprintf(stderr, "Attempt to assign empty container to position by Pileup::getSeqDat\n");
-		_fail = 1;
-	}
-
-	// get reference allele identity
-	if (!pvec[2].empty())
-		_refallele = toupper(pvec[2][0]);
-	else
-	{
-		fprintf(stderr, "Attempt to assign empty container as reference allele by Pileup::getSeqDat\n");
-		_fail = 1;
-	}
-
-	// get number of individuals
+	// initialize sequencing data vector if needed
 	if (seqdat.empty())
 	{
-		_nind = ExtractIndN(pile);
+		_nind = extractIndN(pile, delim);
 		if (_nind < 1)
 		{
-			std::cerr << "Number of individuals < 1\n";
-			return -1;
+			_fail = 1;
+			throw PileupException(ExceptionFormatter() << "No individuals found in pileup input in call to Pileup::" << __func__ << "()");
 		}
 		initializeSeqdat(_nind);
 	}
 
-	// reset values
+	// initialize values
 	_numref = 0;
 	_numalt = 0;
 	for (i = 0; i < 5; ++i)
@@ -178,24 +144,23 @@ int Pileup::getSeqDat (const std::string& pile)
 			_tcounts[k].counts[j] = 0.0;
 	}
 
-	// assign reads and quality scores
-	size_t ind = 0;
+	// set reads and quality scores
+	unsigned int ind = 0;
 	std::string reads;
 	std::string qscores;
 	std::vector<std::string>::const_iterator iter = pvec.begin() + 3;
 
 	if ((*iter).empty())
 	{
-		fprintf(stderr, "Sequencing data required by Pileup::getSeqDat missing\n");
 		_fail = 1;
+		throw PileupFormatException(ExceptionFormatter() << "No sequencing data for " << _name << " " << _pos << " in call to Pileup::" << __func__ << "()");
 	}
 
 	for (iter = pvec.begin() + 3; iter != pvec.end(); ++iter)
 	{
-		++ind;
-		seqdat[ind-1].depth = 0;
+		seqdat[ind].depth = 0;
 		for (int i = 0; i < 4; ++i)
-			seqdat[ind-1].allecount[i] = 0;
+			seqdat[ind].allecount[i] = 0;
 		if ( (*iter)[0] == '0' ) // no data for individual
 		{
 			while ((iter+1) != pvec.end() && !isdigit((*(iter+1))[0]))
@@ -212,64 +177,121 @@ int Pileup::getSeqDat (const std::string& pile)
 				reads += *(++iter);
 			}
 			qscores = *(++iter);
-			getReadDat(&reads, &qscores, ind-1);
+			getReadDat(&reads, &qscores, ind);
 		}
+		++ind;
 	}
 	return 0;
 }
 
-// assigns read and quality scores for an individual
-void Pileup::getReadDat (std::string* reads, std::string* qual, size_t ind)
+void Pileup::setBasicSiteInfo (const std::vector<std::string>& linevec)
 {
+	// set name
+	if (!linevec[0].empty())
+		_name = linevec[0];
+	else
+	{
+		_fail = 1;
+		throw PileupFormatException("Attempt to assign empty name in Pileup::setBasicSiteInfo()");
+	}
+
+	// set position
+	if (!linevec[1].empty())
+		_pos = atoi(linevec[1].c_str());
+	else
+	{
+		_fail = 1;
+		throw PileupFormatException("Attempt to assign empty position in Pileup::setBasicSiteInfo()");
+	}
+
+	// set reference allele identity
+	if (!linevec[2].empty())
+		_refallele = static_cast<char>(toupper(linevec[2][0]));
+	else
+	{
+		_fail = 1;
+		throw PileupFormatException("Attempt to assign empty reference allele in Pileup::setBasicSiteInfo()");
+	}
+}
+
+void Pileup::tokenizeLine (const std::string& s, std::vector<std::string>* elems, const char delim)
+{
+	std::stringstream ss(s);
+	std::string sholder;
+	while (std::getline(ss, sholder, delim))
+	{
+		if (!sholder.empty())
+			elems->push_back(sholder);
+	}
+
+	if (elems->size() < 3)
+		throw PileupFormatException("Pileup::tokenizeLine() unable to split line");
+}
+
+// assigns read and quality scores for an individual
+void Pileup::getReadDat (std::string* reads, std::string* qual, unsigned int ind)
+{
+	enum readtype_t {A_READ, C_READ, G_READ, T_READ, INDEL_READ, N_READ};
+	readtype_t refidx = N_READ;
 	char r;
 	unsigned int index = 0;
 	unsigned int indsize = 0;
-	size_t read_num = 0;
-	int refidx = 0;
+	unsigned int read_num = 0;
 	std::string::iterator q = qual->begin();
 
 	switch (_refallele)
 	{
                 case 'A' :
-                        refidx=0;
+                        refidx=A_READ;
                         break;
                 case 'C' :
-                        refidx=1;
+                        refidx=C_READ;
                         break;
                 case 'G' :
-                        refidx=2;
+                        refidx=G_READ;
                         break;
                 case 'T' :
-                        refidx=3;
+                        refidx=T_READ;
                         break;
-		default :
-			fprintf(stderr, "warning: unrecognized reference allele '%c' at %s position %d\n", _refallele, _name.c_str(), _pos);
-			refidx = -1;
+                case 'N' :
+                		refidx=N_READ;
+                		break;
+                default :
+                	fprintf(stderr, "Warning: unrecognized reference allele '%c' at %s position %d\n", _refallele, _name.c_str(), _pos);
 	}
 
 	for(std::string::const_iterator r_iter = reads->begin(); r_iter != reads->end(); ++r_iter) // go over all reads
 	{
-		r = toupper(*r_iter);
+		r = static_cast<char>(toupper(*r_iter));
 
 		switch(r)
 		{
 			/* reference allele */
 			case '.' :
 			case ',' :
-				recordRead(ind, q, read_num, index, refidx, _refallele);
+				try
+				{
+					recordRead(ind, q, read_num, index, refidx, _refallele);
+				}
+				catch (UnknownReadException& error)
+				{
+					std::cerr << error.what() << ": " << _name << " " << _pos << ", individual " << ind << " -> skipping read\n";
+					++q;
+					++index;
+				}
 				break;
 			/* alternate allele */
 			case 'A' :
-				recordRead(ind, q, read_num, index, 0, r);
+				recordRead(ind, q, read_num, index, A_READ, r);
 				break;
 			case 'C' :
-				recordRead(ind, q, read_num, index, 1, r);
+				recordRead(ind, q, read_num, index, C_READ, r);
 				break;
 			case 'G' :
-				recordRead(ind, q, read_num, index, 2, r);
+				recordRead(ind, q, read_num, index, G_READ, r);
 				break;
 			case 'T' :
-				recordRead(ind, q, read_num, index, 3, r);
+				recordRead(ind, q, read_num, index, T_READ, r);
 				break;
 			/* missing read or gap */
 			case 'N' :
@@ -283,9 +305,9 @@ void Pileup::getReadDat (std::string* reads, std::string* qual, size_t ind)
 			case '+' :
 			case '-' :
 				indsize = indelSize(reads, (index+1));
-                        	r_iter += indsize;
-                        	index += indsize + 1;
-                        	++_alleles[4];
+                r_iter += indsize;
+                index += indsize + 1;
+                ++_alleles[INDEL_READ];
 				break;
 			/* beginning of read */
 			case '^' :
@@ -306,17 +328,20 @@ void Pileup::getReadDat (std::string* reads, std::string* qual, size_t ind)
 	seqdat[ind].depth = read_num;
 }
 
-void Pileup::recordRead (const size_t ind, std::string::iterator& q, size_t& read_num, unsigned int& index, const int id, const char read)
+void Pileup::recordRead (const unsigned int ind, std::string::iterator& q, unsigned int& read_num, unsigned int& index, const int id, const char read)
 {
-	static const float factor = 0.5;
+	// check for invalid read id
+	if (id > 4) throw UnknownReadException(read); // A=>0, C=>1, G=>2, T=>3, INDEL=>4
+
+	const float factor = 0.5;
 	bool add = true;
 	double phredq = static_cast<double>(*q) - _encode;
 	double wtcount;
 
 	if (phredq < 0.0)
 	{
-		fprintf(stderr, "ERROR: Negative quality score '%f' at %s %u --> check quality score encoding\n",phredq,_name.c_str(),_pos);
 		_fail = 1;
+		throw std::runtime_error(ExceptionFormatter() << "Negative quality score " << phredq << " at " << _name << " " << _pos << " in call to Pileup::" << __func__ << "()");
 	}
 
 	if (phredq >= _minQ)
@@ -329,7 +354,7 @@ void Pileup::recordRead (const size_t ind, std::string::iterator& q, size_t& rea
                         	add=false;
                 	}
                 	else
-                        	seqdat[ind].rdat.resize( seqdat[ind].rdat.size() + factor * seqdat[ind].rdat.size() );
+                        	seqdat[ind].rdat.resize(seqdat[ind].rdat.size() + static_cast<size_t>(factor * static_cast<float>(seqdat[ind].rdat.size())));
 		}
 		if (add)
 		{
@@ -337,13 +362,10 @@ void Pileup::recordRead (const size_t ind, std::string::iterator& q, size_t& rea
         		seqdat[ind].rdat[read_num].second = phredq;
 		}
 		++read_num;
-		if (read == _refallele)
-			++_numref;
-		else
-			++_numalt;
+		read == _refallele ? ++_numref : ++_numalt;
 		++seqdat[ind].allecount[id];
 		++_alleles[id];
-		wtcount = 1-error(phredq);
+		wtcount = 1.0 - error(phredq);
 		_wtalleles[id] += wtcount;
 		addtreatcount(wtcount, &seqdat[ind]._id, id);
 	}
@@ -399,7 +421,7 @@ unsigned int Pileup::indelSize (std::string* s, unsigned int start)
         }
 
         std::string indsize = s->substr (start,len);
-        return ( atoi(indsize.c_str()) + indsize.length() );
+        return static_cast<unsigned int>((atoi(indsize.c_str()) + indsize.length()));
 }
 
 // Pileup::fail returns value of _fail member
@@ -408,82 +430,61 @@ int Pileup::fail ()
 	return _fail;
 }
 
-size_t Pileup::ExtractIndN (const std::string& line)
+unsigned int Pileup::extractIndN (const std::string& line, const char delim)
 {
-	size_t nind = 0;
+	unsigned int nind = 0;
 	int inc = 0;
-	if (!line.empty())
+	std::vector<std::string> ptoke;
+	tokenizeLine(line, &ptoke, delim);
+
+	for (std::vector<std::string>::const_iterator iter = ptoke.begin() + 3; iter != ptoke.end(); ++iter)
 	{
-		std::vector<std::string> ptoke = split(line, '\t');
-		for (std::vector<std::string>::const_iterator iter = ptoke.begin() + 3; iter != ptoke.end(); ++iter)
+		++nind;
+		inc = 0;
+		if ( (*iter)[0] == '0' ) // no data for individual
 		{
-			++nind;
-			inc = 0;
-			if ( (*iter)[0] == '0' ) // no data for individual
-			{
-				while ((iter+1) != ptoke.end() && !isdigit((*(iter+1))[0]))
-					++iter;
-				if ((iter+1) == ptoke.end())
-					break;
-			}
-            		else
-            		{
-            			while ( *((iter+(1+inc))->end()-1) == '^' ) // ascii "space" is mapping quality
-            			{
-            				++inc;
-            			}
-            			iter += 2 + inc;
-            		}
+			while ((iter+1) != ptoke.end() && !isdigit((*(iter+1))[0]))
+				++iter;
+			if ((iter+1) == ptoke.end())
+				break;
 		}
-	}
-	else
-	{
-		fprintf(stderr, "No sequencing data in string provided to Pileup::ExtractIndN\n");
-		_fail = 1;
+		else
+		{
+			while ( *((iter+(1+inc))->end()-1) == '^' ) // ascii "space" is mapping quality
+				++inc;
+            iter += 2 + inc;
+		}
 	}
 	return nind;
 }
 
-void Pileup::setIndN (size_t n)
+void Pileup::setIndN (unsigned int n)
 {
 	if (n > 0)
 		_nind = n;
 	else
-		fprintf(stderr, "Attempt to set nonpositive number of individuals in Pileup::setIndN\n");
+		fprintf(stderr, "Attempt to set nonpositive number of individuals in Pileup::%s()\n", __func__);
 }
 
-void Pileup::initializeSeqdat (size_t n)
+void Pileup::initializeSeqdat (const size_t n)
 {
-	size_t start_size = _depthReserve;
 	seqdat.resize(n);
 	for (size_t i = 0; i < n; ++i)
 	{
-		seqdat[i].rdat.resize(start_size);
-		seqdat[i].depth = start_size;
+		seqdat[i].rdat.resize(_depthReserve);
+		seqdat[i].depth = _depthReserve;
 	}
-	_nind=n;
+	_nind=static_cast<unsigned int>(seqdat.size());
 }
 
-unsigned int Pileup::setn (std::string ins)
+unsigned int Pileup::setn (const std::string& ins, const char delim)
 {
-	unsigned int n=0;
-
-	if (ins.empty())
-	{
-		fprintf(stderr,"Empty pileup line passed to Pileup::setn\n");
-		return 0;
-	}
-
-	if (!seqdat.empty())
-	{
-		seqdat.clear();
-	}
+	if (!ins.empty())
+		initializeSeqdat(extractIndN(ins, delim));
 	else
-	{
-		n=ExtractIndN(ins);
-		initializeSeqdat(n);
-	}
-	return n;
+		throw PreConditionException(ExceptionFormatter() << "Empty pileup line passed to Pileup::" << __func__ << "()");
+
+	return static_cast<unsigned int>(seqdat.size());
 }
 
 std::string Pileup::seqName () const
@@ -496,7 +497,7 @@ unsigned int Pileup::position () const
 	return _pos;
 }
 
-void Pileup::setDepthReserve (size_t depth)
+void Pileup::setDepthReserve (unsigned int depth)
 {
 	_depthReserve = depth;
 }
@@ -518,7 +519,7 @@ size_t Pileup::refcount () const
 
 double Pileup::altfreq () const
 {
-	return  static_cast <double> (_numalt) / (_numref + _numalt);
+	return  static_cast<double>(_numalt) / (_numref + _numalt);
 }
 
 size_t Pileup::siteDepth () const
@@ -529,26 +530,21 @@ size_t Pileup::siteDepth () const
 unsigned int Pileup::alleleCount (const char allele) const
 {
 	unsigned int n = 0;
-	switch (allele)
+	switch (toupper(allele))
 	{
 		case 'A' :
-		case 'a' :
 			n = _alleles[0];
 			break;
 		case 'C' :
-		case 'c' :
 			n = _alleles[1];
 			break;
 		case 'G' :
-		case 'g' :
 			n = _alleles[2];
 			break;
 		case 'T' :
-		case 't' :
 			n = _alleles[3];
 			break;
 		case 'I' :
-		case 'i' :
 			n = _alleles[4];
 			break;
 		default :
@@ -560,26 +556,21 @@ unsigned int Pileup::alleleCount (const char allele) const
 double Pileup::wtalleleCount (const char allele) const
 {
 	double n = 0;
-	switch (allele)
+	switch (toupper(allele))
 	{
 		case 'A' :
-		case 'a' :
 			n = _wtalleles[0];
 			break;
 		case 'C' :
-		case 'c' :
 			n = _wtalleles[1];
 			break;
 		case 'G' :
-		case 'g' :
 			n = _wtalleles[2];
 			break;
 		case 'T' :
-		case 't' :
 			n = _wtalleles[3];
 			break;
 		case 'I' :
-		case 'i' :
 			n = _wtalleles[4];
 			break;
 		default :
@@ -627,7 +618,7 @@ unsigned int Pileup::poolsz (int ploidy) const
 
 void Pileup::setMajor(char allele)
 {
-	allele = toupper(allele);
+	allele = static_cast<char>(toupper(allele));
 	switch (allele)
 	{
 		case 'A' :
@@ -638,13 +629,13 @@ void Pileup::setMajor(char allele)
 			_majmin[0] = allele;
 			break;
 	default :
-		fprintf(stderr,"Tried passing invalid allele '%c' to Pileup::setMajor\n",allele);
+		fprintf(stderr,"Invalid allele '%c' passed to Pileup::%s()\n",allele,__func__);
 	}
 }
 
 void Pileup::setMinor(char allele)
 {
-	allele = toupper(allele);
+	allele = static_cast<char>(toupper(allele));
 	switch (allele)
 	{
 		case 'A' :
@@ -655,7 +646,7 @@ void Pileup::setMinor(char allele)
 			_majmin[1] = allele;
 			break;
 	default :
-		fprintf(stderr,"Tried passing invalid allele '%c' to Pileup::setMinor\n",allele);
+		fprintf(stderr,"Invalid allele '%c' passed to Pileup::%s()\n",allele,__func__);
 	}
 }
 
@@ -742,16 +733,16 @@ char Pileup::empiricalMinor ()
 			switch (j->rdat[k].first)
 			{
 				case 'A' :
-					counts[0].second += 1-error(j->rdat[k].second);
+					counts[0].second += 1.0-error(j->rdat[k].second);
 					break;
 				case 'C' :
-					counts[1].second += 1-error(j->rdat[k].second);
+					counts[1].second += 1.0-error(j->rdat[k].second);
 					break;
 				case 'G' :
-					counts[2].second += 1-error(j->rdat[k].second);
+					counts[2].second += 1.0-error(j->rdat[k].second);
 					break;
 				case 'T' :
-					counts[3].second += 1-error(j->rdat[k].second);
+					counts[3].second += 1.0-error(j->rdat[k].second);
 					break;
 			}
 		}
@@ -765,20 +756,21 @@ char Pileup::empiricalMinor ()
 		return counts[2].first;
 }
 
-double Pileup::error (int q)
+double Pileup::error (double q)
 {
-	static const int n = 71;
+	const int n = 71;
 	static double err[n];
+	static int qidx = static_cast<int>(q);
 
-	if (q < 0)
+	if (q < 0.0)
 	{
-		fprintf(stderr,"Invalid quality score '%i' passed to Pileup:error\n",q);
+		fprintf(stderr,"Invalid quality score '%f' passed to Pileup:error\n",q);
 		_fail = 1;
 		return 1.0;
 	}
 
-	if (q < n)
-		return (err[q] != 0.0 ? err[q] : (err[q]=scalePhred(q)));
+	if (qidx < n)
+		return (err[qidx] != 0.0 ? err[qidx] : (err[qidx]=scalePhred(q)));
 	else
 		return scalePhred(q);
 }
@@ -852,3 +844,36 @@ double Pileup::tcount (int i, char a)
 	}
 	return 0.0;
 }
+
+unsigned int Pileup::idSize (const std::string& line, const char delim)
+{
+	std::vector<std::string> tokens;
+	tokenizeLine(line, &tokens, delim);
+	return static_cast<unsigned int>(tokens[0].size());
+}
+
+PileupException::PileupException(const char* error)
+	: error_(error)
+{}
+
+const char* PileupException::what() const throw()
+{
+	std::stringstream msg;
+	msg << "Pileup exception occurred:\n";
+	if (error_) msg << error_;
+	return msg.str().c_str();
+}
+
+PileupFormatException::PileupFormatException(const char* error)
+	: PileupException(error)
+{}
+
+const char* PileupFormatException::what() const throw()
+{
+	std::stringstream msg;
+	msg << PileupException::what() << "\nInvalid pileup file format\n";
+	return msg.str().c_str();
+}
+
+UnknownReadException::UnknownReadException (const char readtype)
+	: std::runtime_error(ExceptionFormatter() << readtype << " is an invalid read type") {}
