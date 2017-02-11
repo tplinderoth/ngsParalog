@@ -136,7 +136,7 @@ double findmax_bfgs(int numpars, double *invec,const void*dats, double (*fun)(co
   while (1) {
     setulb_(&numpars, &m, invec, lowbound, upbound, nbd, &like,grad, &factr, &pgtol, wa, iwa, task, &noisy, csave, lsave,isave, dsave, &optfail); //TL 2/16/15
     if (optfail) // TL 2/16/15
-    	++*fail;
+    	*fail = optfail;
     //if (task[0]=='F' && task[1]=='G') {
     if (taskstr[0]=='F' && taskstr[1]=='G') {
       //printf("\t");
@@ -1142,7 +1142,6 @@ L666:
 /*             abnormal termination. */
 	    if (info == 0) {
 		info = -9;
-		*optfail = -9; // TL 2/16/15
 /*                restore the actual number of f and g evaluations etc. */
 		--nfgv;
 		--ifun;
@@ -3944,32 +3943,38 @@ L999:
 	if (*info != 0) {
 	  if (*info == -1) {
 	    printf("Matrix in 1st Cholesky factorization in formk is not Pos. Def.\n");
+	    *optfail = -1; // TL 12/15/2017
 	    /*
 		s_wsfe(&io___209);
 		e_wsfe();*/
 	    }
 	    if (*info == -2) {
 	      printf(" Matrix in 2st Cholesky factorization in formk is not Pos. Def.\n");
+	      *optfail = -2; // TL 12/15/2017
 	      /*		s_wsfe(&io___210);
 				e_wsfe();*/
 	    }
 	    if (*info == -3) {
 	      printf("Matrix in the Cholesky factorization in formt is not Pos. Def.\n");
+	      *optfail = -3; // TL/15/2017
 	      /*		s_wsfe(&io___211);
 				e_wsfe();*/
 	    }
 	    if (*info == -4) {
 	      printf("Derivative >= 0, backtracking line search impossible.\n, Previous x, f and g restored.\nPossible causes: 1 error in function or gradient evaluation;\n2 rounding errors dominate computation.\n");
+	      *optfail = -4; // TL/15/2017
 	      /*		s_wsfe(&io___212);
 				e_wsfe();*/
 	    }
 	    if (*info == -5) {
 	      printf("Warning:  more than 10 function and gradient evaluations in the last line search.  Termination may possibly be caused by a bad search direction.\n");
+	      *optfail = -5;
 	      /*		s_wsfe(&io___213);
 				e_wsfe();*/
 	    }
 	    if (*info == -6) {
 	      printf(" Input nbd(%i) is invalid\n", *k);
+	      *optfail = -6;
 	      /*		s_wsle(&io___214);
 		do_lio(&c__9, &c__1, " Input nbd(", (ftnlen)11);
 		do_lio(&c__3, &c__1, (char *)&(*k), (ftnlen)sizeof(integer));
@@ -3977,8 +3982,8 @@ L999:
 		e_wsle();*/
 	    }
 	    if (*info == -7) {
-	      printf(" l(%i) > u(%i). No feasible solutions.\n",
-		     *k, *k);
+	      printf(" l(%i) > u(%i). No feasible solutions.\n", *k, *k);
+	      *optfail = -7;
 	      /*
 		s_wsle(&io___215);
 		do_lio(&c__9, &c__1, " l(", (ftnlen)3);
@@ -3990,11 +3995,13 @@ L999:
 	    }
 	    if (*info == -8) {
 	      printf("The triangular system is singular.\n");
+	      *optfail = -8; // TL/15/2017
 	      /*		s_wsfe(&io___216);
 				e_wsfe();*/
 	    }
 	    if (*info == -9) {
 	      printf("Line search cannot locate an adequate point after 20 function and gradient evaluations.  Previous x, f and g restored.  Possible causes: 1 error in function or gradient evaluation; 2 rounding error dominate computation.\n");
+	      *optfail = -9; // TL/15/2017
 	      /*		s_wsfe(&io___217);
 				e_wsfe();*/
 	    }
