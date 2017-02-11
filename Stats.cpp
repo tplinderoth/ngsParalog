@@ -32,7 +32,7 @@ double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], c
 	int i = 0;
 	*status = 0;
 
-	// find MLE for alternate allele frequency (f) under the null hypothesis
+	// find MLE for alternate allele frequency (f) under the null hypothesis (m=1)
 
 	// use the sample alternate allele frequency as a starting point
 	null->par[0] = mafguess(static_cast<Pileup*>(null->data), weightcount);
@@ -40,16 +40,7 @@ double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], c
 
 	// check for failure of guessed maf start point optimization
 	if (null->isfail())
-	{
 		null->multiOptim(fn, dfn);
-		// check for optimization failure at multiple start points
-		if (null->isfail())
-		{
-			fprintf(stderr, "Null optimization failed for %s %u\n", static_cast<Pileup*>(null->data)->seqName().c_str(), static_cast<Pileup*>(null->data)->position());
-			*status = 1;
-			return 0.0;
-		}
-	}
 	else
 	{
 		null->setllh() = like; //set
@@ -59,20 +50,12 @@ double Stats::optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], c
 
 	// find MLE for f and m under the alternative hypothesis
 
-	// set one starting point for the alternate optimization to the null MLE
+	// set one starting point for the alternative optimization to the null MLE
 	alt->start[alt->start.rown()-1][0] = null->mlparam(0);
 	alt->start[alt->start.rown()-1][1] = 1.0;
 
-	// try multiple arbitrary start points
+	// try multiple start points
 	alt->multiOptim(fn, dfn);
-
-	// check for optimization failure at multiple start points
-	if (alt->isfail())
-	{
-		fprintf(stderr, "Alternative optimization failed for %s %u\n", static_cast<Pileup*>(alt->data)->seqName().c_str(), static_cast<Pileup*>(alt->data)->position());
-		*status = 1;
-		return 0.0;
-	}
 
 	// return likelihood ratio
 	return( calcLR(null->llh(), alt->llh(), islog) );
@@ -209,7 +192,7 @@ double Stats::prRead (double m, double qscore, unsigned int g2, char major, char
 	static readProb p;
 
 	if (g2 > 2)
-		throw BadGenotypeException(g2, "Stats::prRead");
+		throw AssertStyleException(ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()");
 
 	double err = pow(10, -qscore/10.0);
 	return (obs == major ? p.majorprobs[g2](m, err) : p.minorprobs[g2](m, err));
@@ -266,7 +249,7 @@ double Stats::genoPrior (const double f, const int g2)
 			p = f*f;
 			break;
 		default:
-			throw BadGenotypeException(g2, "Stats::genoPrior");
+			throw AssertStyleException(ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()");
 	}
 	return p;
 }
@@ -281,9 +264,6 @@ void Stats::kahanSum(double summand, double* total, double* comp)
 
 NoDataException::NoDataException (const char* id, const unsigned int pos)
 	: std::runtime_error(ExceptionFormatter() << id << " " << pos << " has no data") {}
-
-BadGenotypeException::BadGenotypeException (const int geno2, const char* routine)
-	: std::logic_error(ExceptionFormatter() << "Genotype2 has invalid value " << geno2 << " in call to " <<  routine) {}
 
 /*
  * The following code for calculating an analytic gradient is deprecated - switched to numeric gradient.
