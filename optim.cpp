@@ -75,7 +75,7 @@ template< class T > void Optim::cpyConditions (unsigned int olddim, unsigned int
 	memcpy(oldarr, newarr, arrsize);
 	if (newdim > olddim)
 	{
-		for (int i = olddim; i < newdim; i++)
+		for (unsigned int i = olddim; i < newdim; ++i)
 			oldarr[i] = 0;
 	}
 	delete [] newarr;
