@@ -46,7 +46,7 @@ lrllh <- function (par, x) {
 	
 	# faster in R:
 	zeroidx <- which(x==0)
-	x2 <- x[-zeroidx]
+	x2 <- ifelse(length(zeroidx) > 0, x[-zeroidx], x)
 	
 	y1 <- rep(par[1]*0.5, length(zeroidx))
 	y2 <- par[1]*0.5*dchisq(x2, df=1, ncp=0) + (1-par[1])*dtruncnorm(x2, mean=par[2], sd=par[3], a=0, b=Inf)
@@ -56,19 +56,26 @@ lrllh <- function (par, x) {
 	-sum(log(llh))
 }
 
-fitlr <- function (lr) {
+
+fitlr <- function (lr, coverage, nullmean, nullsd) {
+	# lr: likelihood ratios
+	# coverage: average individual coverage
+	# nullmean: estimate of average individual coverage for nonduplicated sites
+	# nullsd: estimate of the standard deviation for the average individual coverage for nonduplicated sites
 	
-	nullcutoff <- 2.705
+	# subset of LR values for sites that have < 0.95 probability of coming from null according to coverage
+	covprob <- 0.95
+	covthresh <- qtruncnorm(covprob, mean=nullmean, sd=nullsd, a=0, b=Inf)
+	sublr <- lr[which(coverage > covthresh)]
 	
 	# estimate proportion of LRs under the null
-	nullidx <- which(lr < nullcutoff)
-	pnull <- length(nullidx)/length(lr)
-	# approximate mean and standard deviation of alternative LR values
-	altlr <- lr[-nullidx]
-	lravg <- mean(altlr)
-	lrsd <- sqrt(var(altlr))
+	pnull <- 1 - length(sublr)/length(lr)
 	
-	fit <- optim(par=c(pnull, lravg, lrsd), fn=lrllh, method="L-BFGS-B", lower=c(1e-6, 0, 1e-16), upper=c(0.999999, Inf, Inf), x=lr)
+	# approximate mean and standard deviation of alternative LR values
+	lravg <- mean(sublr)
+	lrsd <- sqrt(var(sublr))
+	
+	fit <- optim(par=c(pnull, lravg, lrsd), fn=lrllh, method="L-BFGS-B", lower=c(0, 0, 1e-16), upper=c(1, Inf, Inf), x=lr)
 	
 	return(fit$par)
 }
@@ -116,14 +123,14 @@ initializeEmissions <- function(lr, coverage) {
 	
 	lrprob <- matrix(NA, nrow=2, ncol=length(lrseq)+2)
 	covprob <- matrix(NA, nrow=2, ncol=length(covseq)+2)
-	
-	# estimate parameters for LR distribution
-	cat("Fitting LR distribution\n")
-	lrpar <- fitlr(lr)
-	
+
 	# estimate parameters for null coverage distribution
 	cat("Fitting coverage distribution\n")
 	covpar <- fitCoverage(coverage, lr)
+	
+	# estimate parameters for LR distribution
+	cat("Fitting LR distribution\n")
+	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[1], nullsd=covpar[2])
 
 	# calculate emission probabilities
 	cat("Calculating emission probabilities\n")
@@ -598,7 +605,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4) {
 	regions <- dupCoordinates(q=q, sites=lr[,1:2])
 	
 	#return(regions) # returns a list of regions and states - only return regions in final implementation
-	return(list(regions[[1]], regions[[2]])) # return states for debugging
+	return(list(regions[[1]], regions[[2]]), lambda[[1]], lambda[[2]]) # return states and estimate of initial state distribution and transition matrix for debugging
 }
 
 ###### end main ######
