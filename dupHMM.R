@@ -605,7 +605,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4) {
 	regions <- dupCoordinates(q=q, sites=lr[,1:2])
 	
 	#return(regions) # returns a list of regions and states - only return regions in final implementation
-	return(list(regions[[1]], regions[[2]]), lambda[[1]], lambda[[2]]) # return states and estimate of initial state distribution and transition matrix for debugging
+	return(list(regions[[1]], regions[[2]], lambda[[1]], lambda[[2]])) # return states and estimate of initial state distribution and transition matrix for debugging
 }
 
 ###### end main ######
