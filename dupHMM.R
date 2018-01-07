@@ -3,8 +3,9 @@
 # TODO:
 ###############################################################################
 
-library(expm)
-library(truncnorm)
+library(expm, quietly=TRUE)
+library(truncnorm, quietly=TRUE)
+library(argparser, quietly=TRUE)
 
 ###### functions ######
 
@@ -31,53 +32,56 @@ initializeP <- function() {
 	return(trans)
 }
 
+fitlr <- function (lr, coverage, nullmean, nullsd, tailcutoff = 1.0) {
+	# lr: likelihood ratios
+	# coverage: average individual coverage
+	# nullmean: estimate of average individual coverage for nonduplicated sites
+	# nullsd: estimate of the standard deviation for the average individual coverage for nonduplicated sites
+	# tailcutoff: fit alternative distribution to LRs under the 'tailcutoff' quantile (avoid influence of extreme values)
+	
+	# subset of LR values for sites that have < 0.95 probability of coming from null according to coverage and are within the 'tailcutoff' percentile
+	covprob <- 0.95 # coverage used to avoid influencing fit by null sites with heterozygote advantage
+	covlower <- qtruncnorm(covprob, mean=nullmean, sd=nullsd, a=0, b=Inf)
+	lrupper <- quantile(lr, tailcutoff)
+	sublr <- lr[which(coverage > covlower & lr < lrupper)]
+	
+	# estimate proportion of LRs under the null
+	lrquantile <- 2.705 # 95% quantile for null LR distribution
+	pnull <- 1 - length(which(sublr > lrquantile))/length(sublr)
+	
+	# approximate median of alternative LR values
+	ncpguess <- mean(sublr)
+	
+	fit <- optim(par=c(pnull, 1, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(0, 0, 0), upper=c(1, Inf, Inf), x=sublr)
+	
+	return(fit$par)
+}
+
 lrllh <- function (par, x) {
-	# LR ~ par[1]*[0.5*chisq(df=0, ncp=0) + 0.5*chisq(df=1, ncp=0)] + (1-par[1])*[truncated_normal(mean=par[2], sd=par[3], lowerbound=0, upperbound=Inf)]
+	# LR ~ par[1]*[0.5*chisq(df=0, ncp=0) + 0.5*chisq(df=1, ncp=0)] + (1-par[1])*chisq(df=par[2], ncp=par[3])
 	# par[1] = probability LR comes from null distribution 
 	# par[2] = df for alternate chisquare distribution
 	# par[3] = noncentrality parameter for alternate chisquare distribution
 	
 #	llh <- rep(NA, length(x))
 #	for (i in 1:length(x)) {
-#		if (x[i] == 0) llh[i] <- par[1]*0.5 else llh[i] <- par[1]*0.5*dchisq(x[i], df=1, ncp=0) + (1-par[1])*dtruncnorm(x[i], mean=par[2], sd=par[3], a=0, b=Inf)
+#		if (x[i] == 0) llh[i] <- par[1]*0.5 else llh[i] <- par[1]*0.5*dchisq(x[i], df=1, ncp=0) + (1-par[1])*dchisq(x[i], df=par[2], ncp=par[3])
 #	}
 #	llh <- replace(llh, llh==0, .Machine$double.xmin)
-#	-sum(log(llh))
+#	ret <- -sum(log(llh))
 	
 	# faster in R:
 	zeroidx <- which(x==0)
-	x2 <- ifelse(length(zeroidx) > 0, x[-zeroidx], x)
+	nzero <- length(zeroidx)
+	if (nzero != 0) x <- x[-zeroidx]
 	
-	y1 <- rep(par[1]*0.5, length(zeroidx))
-	y2 <- par[1]*0.5*dchisq(x2, df=1, ncp=0) + (1-par[1])*dtruncnorm(x2, mean=par[2], sd=par[3], a=0, b=Inf)
+	dzero <- par[1]*0.5
+	y1 <- rep(dzero, nzero)
+	y2 <- dzero*dchisq(x, df=1, ncp=0) + (1-par[1])*dchisq(x, df=par[2], ncp=par[3])
 	
 	llh <- c(y1, y2)
 	llh <- replace(llh, llh==0, .Machine$double.xmin)
 	-sum(log(llh))
-}
-
-
-fitlr <- function (lr, coverage, nullmean, nullsd) {
-	# lr: likelihood ratios
-	# coverage: average individual coverage
-	# nullmean: estimate of average individual coverage for nonduplicated sites
-	# nullsd: estimate of the standard deviation for the average individual coverage for nonduplicated sites
-	
-	# subset of LR values for sites that have < 0.95 probability of coming from null according to coverage
-	covprob <- 0.95
-	covthresh <- qtruncnorm(covprob, mean=nullmean, sd=nullsd, a=0, b=Inf)
-	sublr <- lr[which(coverage > covthresh)]
-	
-	# estimate proportion of LRs under the null
-	pnull <- 1 - length(sublr)/length(lr)
-	
-	# approximate mean and standard deviation of alternative LR values
-	lravg <- mean(sublr)
-	lrsd <- sqrt(var(sublr))
-	
-	fit <- optim(par=c(pnull, lravg, lrsd), fn=lrllh, method="L-BFGS-B", lower=c(0, 0, 1e-16), upper=c(1, Inf, Inf), x=lr)
-	
-	return(fit$par)
 }
 
 covllh <- function (par, x) {
@@ -112,7 +116,7 @@ fitCoverage <- function(coverage, lr) {
 	return(fit$par)
 }
 
-initializeEmissions <- function(lr, coverage) {
+initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	# initialize emission probabilites
 	
 	# lr: vector of duplicaiton likelihood ratios
@@ -130,7 +134,7 @@ initializeEmissions <- function(lr, coverage) {
 	
 	# estimate parameters for LR distribution
 	cat("Fitting LR distribution\n")
-	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[1], nullsd=covpar[2])
+	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[1], nullsd=covpar[2], tailcutoff=lrmax_quantile)
 
 	# calculate emission probabilities
 	cat("Calculating emission probabilities\n")
@@ -139,13 +143,13 @@ initializeEmissions <- function(lr, coverage) {
 	lrmax <- 1
 	seenalt <- 0
 	lrprob[1,1] <- 0.5 + 0.5*pchisq(1,1)
-	lrprob[2,1] <- ptruncnorm(1, mean=lrpar[2], sd=lrpar[3], a=0, b=Inf)
+	lrprob[2,1] <- pchisq(1, df=lrpar[2], ncp=lrpar[3])
 	nullsum <- lrprob[1,1]
 	altsum <- lrprob[2,1]
 	
 	for (i in lrseq) {
 		lrprob[1,i] <- (0.5 + 0.5*pchisq(q=i, df=1)) - nullsum # null
-		lrprob[2,i] <- ptruncnorm(i, mean=lrpar[2], sd=lrpar[3], a=0, b=Inf) - altsum # alternate
+		lrprob[2,i] <- pchisq(i, df=lrpar[2], ncp=lrpar[3]) - altsum # alternate
 		nullsum <- nullsum + lrprob[1,i]
 		altsum <- altsum + lrprob[2,i]
 		if (seenalt < 1 && lrprob[2,i] > 0) seenalt <- 1 # check if the alternative distribution has been entered 
@@ -578,20 +582,21 @@ dupCoordinates <- function (q, sites) {
 
 ###### main ######
 
-mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4) {
+mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=0.99) {
 	# main function for duplication HMM
 	 
 	# lr: ngsParalog calcLR likelihood ratios output
 	# coverage: vector of average individual coverage for each site in lr
 	# maxiter: maximum number of iterations for Baum-Welch EM
 	# probdiff: minimum difference in log likelihoods between iterations of Baum-Welch EM
+	# lrquantile: ignore LR values above 'lrquantile' when fitting alternative LR distribution (avoid influencce of many very extreme values) 
 
 	# initialize model parameter guesses for Baum-Welch estimation
 	
 	lambda <- list(NA, NA, NA)
 	lambda[[1]] <- initializePi() # initial distribution vector
 	lambda[[2]] <- initializeP() # transitition probability matrix
-	emit <- initializeEmissions(lr=lr$V5, coverage=coverage) # returns [emission matrix, [lr, coverage]]
+	emit <- initializeEmissions(lr=lr$V5, coverage=coverage, lrmax_quantile=lrquantile) # returns [emission matrix, [lr, coverage]]
 	lambda[[3]] <- emit[[1]] # emission probability matrix
 	
 	# estimate hmm parameters with Baum-Welch
