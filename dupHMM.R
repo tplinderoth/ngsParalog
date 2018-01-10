@@ -1,11 +1,13 @@
+#!/usr/bin/env Rscript
+
 # dupHMM.R
 
 # TODO:
 ###############################################################################
 
-library(expm, quietly=TRUE)
+library(expm, quietly=TRUE, warn.conflicts=FALSE)
 library(truncnorm, quietly=TRUE)
-library(argparser, quietly=TRUE)
+library(docopt, quietly=TRUE)
 
 ###### functions ######
 
@@ -125,8 +127,8 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	lrseq <- seq(from=2, to=max(ceiling(lr)), by=1)
 	covseq <- seq(from=2, to=max(ceiling(coverage)), by=1)
 	
-	lrprob <- matrix(NA, nrow=2, ncol=length(lrseq)+2)
-	covprob <- matrix(NA, nrow=2, ncol=length(covseq)+2)
+	lrprob <- matrix(NA, nrow=2, ncol=length(lrseq)+1)
+	covprob <- matrix(NA, nrow=2, ncol=length(covseq)+1)
 
 	# estimate parameters for null coverage distribution
 	cat("Fitting coverage distribution\n")
@@ -158,7 +160,9 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	}
 	
 	# assign very small probability to LR emissions with zero probability under the null and alternative distributions
-	lrprob[,which(lrprob[1,]==0 & lrprob[2,]==0)] <- .Machine$double.xmin
+	#lrprob[,which(lrprob[1,]==0 & lrprob[2,]==0)] <- .Machine$double.xmin
+	#lrprob[1,] <- lrprob[1,]/sum(lrprob[1,])
+	#lrprob[2,] <- lrprob[2,]/sum(lrprob[2,])
 	
 	# calculate probabilities of the observed coverage
 	covmax <- 1
@@ -180,7 +184,9 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	}
 	
 	# assign very small probability to coverage emissions with zero probability under the null and alternative distributions
-	covprob[,which(covprob[1,]==0 & covprob[2,]==0)] <- .Machine$double.xmin
+	# covprob[,which(covprob[1,]==0 & covprob[2,]==0)] <- .Machine$double.xmin
+	# covprob[1,] <- covprob[1,]/sum(covprob[1,])
+	# covprob[2,] <- covprob[2,]/sum(covprob[2,])
 	
 	# calculate joint probabilities of LR and coverage
 	b <- list(matrix(NA, nrow=lrmax, ncol=covmax), matrix(NA, nrow=lrmax, ncol=covmax))
@@ -190,6 +196,12 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 			b[[2]][i,j] <- lrprob[2,i] * covprob[2,j] # alternative
 		}
 	}
+	
+	# assign small probability to emissions that are zero under both the null and alternative
+	minval <- min(c(min(b[[1]][which(b[[1]]>0)]), min(b[[2]][which(b[[2]]>0)]))) # smallest nonzero value occuring in null or alternative
+	zeroidx <- which(b[[1]] == 0 & b[[2]] == 0) # indices that are zero under null and alternative
+	b[[1]][zeroidx] <- minval
+	b[[2]][zeroidx] <- minval
 	
 	# make the emission probs sum to one
 	b[[1]] <- b[[1]]/sum(b[[1]]) # null emissions must sum to 1
@@ -214,11 +226,11 @@ seqPMatrix <- function(p, sites, logscale=0) {
 	# sites: vector steps of the HMM (SNP positions)
 	
 	P <- list(p) # P[[1]] is a dummy
-	if (logscale) P[[1]] = log(P[[1]])
+	if (logscale) P[[1]] <- log(P[[1]])
 	
 	for (i in 2:length(sites)) {
-		P[[i]] = p %^% (sites[i] - sites[i-1])
-		if (logscale) P[[i]] = log(P[[i]])
+		P[[i]] <- p %^% (sites[i] - sites[i-1])
+		if (logscale) P[[i]] <- log(P[[i]])
 	}
 	
 	return(P)
@@ -233,37 +245,39 @@ hmmForward <- function (obs, pi, p, b) {
 	# p: transition probability matrices
 	# b: emission probability matrix
 	
-	nstates = length(pi)
-	T = length(obs[[1]])
+	nstates <- length(pi)
+	T <- length(obs[[1]])
 	alpha <- matrix(data=NA, nrow=T, ncol=nstates) # alpha(t,i) = P(O1, O2, O3,..., Ot, qt=Si), forward variables
 	c <- rep(NA, T) # scaling variables
 	
 	# initialization step - might need to adjust this and start at alpha(0,i) as in Durbin
-	c[1] = 0
+	c[1] <- 0
 	for (i in 1:nstates) {
-		alpha[1, i] = pi[i] * b[[i]][ obs[[1]][1], obs[[2]][1] ] # alpha(1,i) = pi_i * b_i(O1)
-		c[1] = c[1] + alpha[1,i]
+		alpha[1, i] <- pi[i] * b[[i]][ obs[[1]][1], obs[[2]][1] ] # alpha(1,i) = pi_i * b_i(O1)
+		c[1] <- c[1] + alpha[1,i]
 	}
 	
 	# scale the alpha[1,i]
-	for (i in 1:nstates) alpha[1, i] = alpha[1, i]/c[1]
+	c[1] <- 1/c[1]
+	for (i in 1:nstates) alpha[1, i] <- c[1] * alpha[1, i]
 
 	# induction step
 	for (t in 2:T) {
-		c[t] = 0
+		c[t] <- 0
 		
 		# alpha(t+1, i) = sum_i=1_to_N( alpha(t,j) * p_ji * b_i(O_t+1) )
 		for (i in 1:nstates) {
-			alpha[t, i] = 0
+			alpha[t, i] <- 0
 			for (j in 1:nstates) {
-				alpha[t, i] = alpha[t, i] + alpha[t-1, j] * p[[t]][j, i]
+				alpha[t, i] <- alpha[t, i] + alpha[t-1, j] * p[[t]][j, i]
 			}
-			alpha[t, i] = alpha[t, i] * b[[i]][ obs[[1]][t], obs[[2]][t] ]
-			c[t] = c[t] + alpha[t, i]
+			alpha[t, i] <- alpha[t, i] * b[[i]][ obs[[1]][t], obs[[2]][t] ]
+			c[t] <- c[t] + alpha[t, i]
 		}
 		
 		# scale the forward variables
-		for (i in 1:nstates) alpha[t, i] = alpha[t, i]/c[t]
+		c[t] <- 1/c[t]
+		for (i in 1:nstates) alpha[t, i] <- c[t] * alpha[t, i]
 	}
 	
 	# return list of scaled forward variables and scaling variables
@@ -286,7 +300,7 @@ hmmBackward <- function(obs, p, b, c) {
 	
 	# initializaiton
 	for (i in 1:nstates) {
-		beta[T, i] = 1/c[T]
+		beta[T, i] <- c[T]
 	}
 	
 	# recursion
@@ -294,9 +308,9 @@ hmmBackward <- function(obs, p, b, c) {
 		for (i in 1:nstates) {
 			beta[t, i] = 0
 			for (j in 1:nstates) {
-				beta[t, i] = beta[t, i] + p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j]
+				beta[t, i] <- beta[t, i] + p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j]
 			}
-			beta[t, i] = beta[t, i]/c[t]
+			beta[t, i] <- c[t] * beta[t, i]
 		}
 	}
 	
@@ -321,28 +335,28 @@ hmmStateVars <- function (obs, alpha, beta, p, b) {
 	for (t in 1:(T-1)) {
 		
 		# calculate denominator, P(X)
-		px = 0
+		px <- 0
 		for (i in 1:nstates) {
-			for (j in 1:nstates) px = px + ( alpha[t,i] * p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j] )
+			for (j in 1:nstates) px <- px + ( alpha[t,i] * p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j] )
 		}
 		
 		
 		for (i in 1:nstates) {
-			psi[t, i] = 0
+			psi[t, i] <- 0
 			for (j in 1:nstates) {
 				# probability that p_ij is used at position t
-				gamma[[t]][i,j] = (alpha[t, i] * p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j]) / px
+				gamma[[t]][i,j] <- (alpha[t, i] * p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j]) / px
 				# probability that x_t = i
-				psi[t, i] = psi[t, i] + gamma[[t]][i,j]
+				psi[t, i] <- psi[t, i] + gamma[[t]][i,j]
 			}
 		}
 	}
 	
-	px = 0
+	px <- 0
 	for (i in 1:nstates)
-		px = px + alpha[T, i]
+		px <- px + alpha[T, i]
 	for (i in 1:nstates)
-		psi[T, i] = alpha[T, i]/px
+		psi[T, i] <- alpha[T, i]/px
 	
 	return(list(gamma, psi))
 }
@@ -363,7 +377,7 @@ hmmEstParam <- function(gamma, psi, estimate=c(1,2,3), obs=NA) {
 	# estimate initial distribution
 	if (1 %in% estimate) {
 		params[[1]] <- rep(NA, nstates)
-		for (i in 1:nstates) params[[1]][i] = psi[1, i]
+		for (i in 1:nstates) params[[1]][i] <- psi[1, i]
 	}
 	
 	# estimate transition probability matrix
@@ -372,11 +386,11 @@ hmmEstParam <- function(gamma, psi, estimate=c(1,2,3), obs=NA) {
 		
 		for (i in 1:nstates) {
 			for (j in 1:nstates) {
-				expij = 0 # expected number of transitions from state i to j
-				exi = 0 # expected number of transitions from state i - can store this for estimating B
+				expij <- 0 # expected number of transitions from state i to j
+				exi <- 0 # expected number of transitions from state i - can store this for estimating B
 				for (t in 1:(T-1)) {
-					expij = expij + gamma[[t]][i,j]
-					exi = exi + psi[t,i]
+					expij <- expij + gamma[[t]][i,j]
+					exi <- exi + psi[t,i]
 				}
 				params[[2]][i,j] = expij/exi
 			}
@@ -420,15 +434,14 @@ hmmProbObs <- function(c) {
 	
 	# c: scaling variables from forward algorithm
 	
-	pobs = 0
-	for (j in 1:length(c)) pobs = pobs + log(c[j])
+	pobs <- 0
+	for (j in 1:length(c)) pobs <- pobs + log(c[j])
 	
-	return(pobs)
+	return(-pobs)
 }
 
 hmmBaumWelch <- function(obs, steps, pi, p, b, maxiter=100, pdifflimit=1e-4, est=c(1,2,3)) {
 	# Baum Welch algorithm
-	# only returns updated estimates of pi and p
 	
 	# obs: observations
 	# pi: initital probability distribution
@@ -442,7 +455,7 @@ hmmBaumWelch <- function(obs, steps, pi, p, b, maxiter=100, pdifflimit=1e-4, est
 	oldlogPX = 0
 	logPX = 0
 	iter = 0
-	
+
 	while (iter < maxiter) {
 		seqp = seqPMatrix(p=lambda[[2]], sites=steps, logscale=0)
 		
@@ -461,8 +474,6 @@ hmmBaumWelch <- function(obs, steps, pi, p, b, maxiter=100, pdifflimit=1e-4, est
 		# calculate log likelihood of the data
 		logPX = hmmProbObs(c=fvar[[2]])
 		
-		#print(lambda[est]) # debug
-		
 		# check for terminating conditions
 		if (iter > 0) {
 			pdiff = logPX - oldlogPX
@@ -475,7 +486,6 @@ hmmBaumWelch <- function(obs, steps, pi, p, b, maxiter=100, pdifflimit=1e-4, est
 		iter = iter + 1
 	}
 	
-	#return(lambda)
 	return(lambda)
 }
 
@@ -494,7 +504,11 @@ hmmViterbi <- function(pi, p, b, obs, steps) {
 	# take log of model parameters
 	logpi <- log(pi)
 	logp <- seqPMatrix(p=p, sites=steps, logscale=1)
-	logb <- list(log(b[[1]]), log(b[[2]])) # might have to address log(0)
+	logb <- list(log(b[[1]]), log(b[[2]]))
+	
+	# set log(0) emission probabilities to very small values to avoid -Inf
+	# logb[[1]][logb[[1]] == -Inf] <- .Machine$double.xmin
+	# logb[[2]][logb[[2]] == -Inf] <- .Machine$double.xmin
 	
 	# initialize data structures for storing viterbi variables
 	v <- matrix(data=NA, nrow=nstates, ncol=T) # path probability matrix
@@ -512,7 +526,7 @@ hmmViterbi <- function(pi, p, b, obs, steps) {
 		for (j in 1:nstates) {
 			
 			# find max(v_t(i), pij) <- should be a seperate function in C implementation
-			statemax = -.Machine$double.xmax
+			statemax = -Inf
 			for (i in 1:nstates) {
 				a = v[i,t-1] + logp[[t]][i, j]
 				if  (a > statemax) {
@@ -534,7 +548,7 @@ hmmViterbi <- function(pi, p, b, obs, steps) {
 	for(t in T:2) q[t-1] = backptr[q[t],t]
 	
 	# print info
-	cat("-logP(observations, states) = ", pstates, "\n", sep='')
+	cat("logP(observations, states) = ", pstates, "\n", sep='')
 	
 	return(q)
 }
@@ -578,11 +592,7 @@ dupCoordinates <- function (q, sites) {
 	return(list(regions, states))
 }
 
-###### end functions ######
-
-###### main ######
-
-mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=0.99) {
+mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0) {
 	# main function for duplication HMM
 	 
 	# lr: ngsParalog calcLR likelihood ratios output
@@ -600,10 +610,12 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=0.9
 	lambda[[3]] <- emit[[1]] # emission probability matrix
 	
 	# estimate hmm parameters with Baum-Welch
+	cat("estimating hmm parameters\n")
 	estparam <- c(1,2) # only estimate initial distribution and transition probabilities
 	lambda[estparam] <- hmmBaumWelch(obs=emit[[2]], steps=lr$V2, pi=lambda[[1]], p=lambda[[2]], b=lambda[[3]], maxiter=maxiter, pdifflimit=probdiff, est=estparam)[estparam]
 	
 	# perform decoding with Viterbi
+	cat("finding state sequence\n")
 	q <- hmmViterbi(pi=lambda[[1]], p=lambda[[2]], b=lambda[[3]], obs=emit[[2]], steps=lr$V2)
 	
 	# find coordinates of duplicated regions
@@ -613,4 +625,58 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=0.9
 	return(list(regions[[1]], regions[[2]], lambda[[1]], lambda[[2]])) # return states and estimate of initial state distribution and transition matrix for debugging
 }
 
-###### end main ######
+###### end functions ######
+
+v <- paste('dupHMM.R 0.0.1',"\n") # version 1/9/2018
+
+# parse arguments
+
+'
+		Description:
+		Infer regions of duplication from ngsParalog likelihood ratios and sequencing depth
+		
+		Usage:
+		dupHMM.R --lrfile=<likelihood ratio file> --covfile=<coverage file> --outfile=<output prefix> [options]
+		dupHMM.R -h | --help
+		dupHMM.R --version
+		
+		Options:
+		--maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
+		--probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
+		--lrquantile=<float>   Ignore LRs above this qunatile when fitting alternative LR distribution [default: 1.0]
+		' -> doc
+
+opts <- docopt(doc, version=v)
+
+# set and check options
+em_max_iter <- as.numeric(opts$maxiter)
+pdiff <- as.numeric(opts$probdiff)
+lrcutoff <- as.numeric(opts$lrquantile)
+
+if (em_max_iter < 1) stop("maxiter must be > 1")
+if (pdiff <= 0) stop("probdiff must be > 0")
+if (lrcutoff <= 0 || lrcutoff > 1) stop("lrquantile must be in range (0,1]")
+
+# open file connections
+lrf <- read.table(opts$lrfile)
+cov <- read.table(opts$covfile)$V3
+if (nrow(lrf) != length(cov)) stop("likelihood ratio and coverage vector lengths differ")
+
+rf_name <- paste(opts$outfile, ".rf", sep='')
+sf_name <- paste(opts$outfile, ".states", sep='')
+
+rf_out <- file(rf_name, "w")
+sf_out <- file(sf_name, "w")
+
+# run the hmm
+result <- mainDupHmm(lr=lrf, coverage=cov, maxiter=em_max_iter, probdiff=pdiff, lrquantile=lrcutoff)
+
+# output results
+cat("Writing results\n")
+write.table(result[[1]], file=rf_out, row.names=FALSE, col.names=FALSE, quote=FALSE, sep='\t')
+write.table(result[[2]], file=sf_out, row.names=FALSE, col.names=TRUE, quote=FALSE, sep='\t')
+
+close(rf_out)
+close(sf_out)
+
+cat("Finished\n")
