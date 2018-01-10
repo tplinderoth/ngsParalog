@@ -632,19 +632,19 @@ v <- paste('dupHMM.R 0.0.1',"\n") # version 1/9/2018
 # parse arguments
 
 '
-		Description:
-		Infer regions of duplication from ngsParalog likelihood ratios and sequencing depth
+Description:
+Infer regions of duplication from ngsParalog likelihood ratios and sequencing depth
 		
-		Usage:
-		dupHMM.R --lrfile=<likelihood ratio file> --covfile=<coverage file> --outfile=<output prefix> [options]
-		dupHMM.R -h | --help
-		dupHMM.R --version
+Usage:
+   dupHMM.R --lrfile=<likelihood ratio file> --covfile=<coverage file> --outfile=<output prefix> [options]
+   dupHMM.R -h | --help
+   dupHMM.R --version
 		
-		Options:
-		--maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
-		--probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
-		--lrquantile=<float>   Ignore LRs above this qunatile when fitting alternative LR distribution [default: 1.0]
-		' -> doc
+Options:
+   --maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
+   --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
+   --lrquantile=<float>   Ignore LRs above this qunatile when fitting alternative LR distribution [default: 1.0]
+' -> doc
 
 opts <- docopt(doc, version=v)
 
