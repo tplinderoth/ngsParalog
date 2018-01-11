@@ -329,7 +329,7 @@ hmmStateVars <- function (obs, alpha, beta, p, b) {
 	
 	T <- nrow(alpha)
 	nstates <- ncol(alpha)
-	gamma <- lapply(1:T-2, matrix, data=NA, nrow=nstates, ncol=nstates) # P(x_t = i, x_t+1 = j | x, lambda)
+	gamma <- lapply(1:(T-1), matrix, data=NA, nrow=nstates, ncol=nstates) # P(x_t = i, x_t+1 = j | x, lambda)
 	psi <- matrix(0, nrow=T, ncol=nstates) # P(x_t = i | x, lambda)
 	
 	for (t in 1:(T-1)) {
