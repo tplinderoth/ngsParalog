@@ -21,7 +21,7 @@ initializePi <- function() {
 initializeP <- function() {
 	# initialize transition probability matrix uniformly
 	
-	nstates = 2
+	nstates <- 2
 	trans <- matrix(NA, nrow=nstates, ncol=nstates)
 
 	p <- 1/nstates
@@ -294,8 +294,8 @@ hmmBackward <- function(obs, p, b, c) {
 	# b: emission probability matrix
 	# scaling variables from the forward algorithm
 	
-	nstates = nrow(p[[1]])
-	T = length(obs[[1]])
+	nstates <- nrow(p[[1]])
+	T <- length(obs[[1]])
 	beta <- matrix(data=NA, nrow=T, ncol=nstates) # beta(t,i) = P(O_t+1, O_t+2,..., O_T | q_t = S_i), backward variables
 	
 	# initializaiton
@@ -306,7 +306,7 @@ hmmBackward <- function(obs, p, b, c) {
 	# recursion
 	for (t in (T-1):1) {
 		for (i in 1:nstates) {
-			beta[t, i] = 0
+			beta[t, i] <- 0
 			for (j in 1:nstates) {
 				beta[t, i] <- beta[t, i] + p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j]
 			}
@@ -392,7 +392,7 @@ hmmEstParam <- function(gamma, psi, estimate=c(1,2,3), obs=NA) {
 					expij <- expij + gamma[[t]][i,j]
 					exi <- exi + psi[t,i]
 				}
-				params[[2]][i,j] = expij/exi
+				params[[2]][i,j] <- expij/exi
 			}
 		}
 	}
@@ -415,10 +415,10 @@ hmmEstParam <- function(gamma, psi, estimate=c(1,2,3), obs=NA) {
 	
 		# alternative estimate for emission prob matrix (avoids loop over observation types) - only works when observation index = observation symbol
 		for (i in 1:nstates) {
-			exi = 0 # expected number of times in state i
+			exi <- 0 # expected number of times in state i
 			for (t in 1:T) {
 				params[[3]][[i]][ obs[[1]][t], obs[[2]][t] ] <- params[[3]][[i]][ obs[[1]][t], obs[[2]][t] ] + psi[t, i]
-				exi = exi + psi[t, i]
+				exi <- exi + psi[t, i]
 			}
 			for (j in 1:nrow(params[[3]][[1]])) {
 				for (k in 1:ncol(params[[3]][[1]])) params[[3]][[i]][j,k] <- params[[3]][[i]][j,k]/exi
@@ -451,39 +451,39 @@ hmmBaumWelch <- function(obs, steps, pi, p, b, maxiter=100, pdifflimit=1e-4, est
 	# logdiff: minimum difference in the log likelihoods
 	# parameters to estimate: 1=>inititial distribution, 2=>transition matrix, 3=>emission probs
 	
-	lambda = list(pi, p, b)
-	oldlogPX = 0
-	logPX = 0
-	iter = 0
+	lambda <- list(pi, p, b)
+	oldlogPX <- 0
+	logPX <- 0
+	iter <- 0
 
 	while (iter < maxiter) {
-		seqp = seqPMatrix(p=lambda[[2]], sites=steps, logscale=0)
+		seqp <- seqPMatrix(p=lambda[[2]], sites=steps, logscale=0)
 		
 		# calculate forward variables
-		fvar = hmmForward(obs=obs, pi=lambda[[1]], p=seqp, b=lambda[[3]])
+		fvar <- hmmForward(obs=obs, pi=lambda[[1]], p=seqp, b=lambda[[3]])
 		
 		# calculate backward variables
-		bvar = hmmBackward(obs=obs, p=seqp, b=lambda[[3]], c=fvar[[2]])
+		bvar <- hmmBackward(obs=obs, p=seqp, b=lambda[[3]], c=fvar[[2]])
 		
 		# calculate probability of i->j and of being in state i at time t
-		svar = hmmStateVars(obs=obs, alpha=fvar[[1]], beta=bvar, p=seqp, b=lambda[[3]])
+		svar <- hmmStateVars(obs=obs, alpha=fvar[[1]], beta=bvar, p=seqp, b=lambda[[3]])
 		
 		# estimate model parameters - only need to estimate initital distribution and transition matrix
-		lambda[est] = hmmEstParam(gamma=svar[[1]], psi=svar[[2]], estimate=est, obs=obs)[est]
+		lambda[est] <- hmmEstParam(gamma=svar[[1]], psi=svar[[2]], estimate=est, obs=obs)[est]
 		
 		# calculate log likelihood of the data
-		logPX = hmmProbObs(c=fvar[[2]])
+		logPX <- hmmProbObs(c=fvar[[2]])
 		
 		# check for terminating conditions
 		if (iter > 0) {
-			pdiff = logPX - oldlogPX
+			pdiff <- logPX - oldlogPX
 			cat("Likelihood [", iter, "]: ", logPX, ", Difference in log probability: ", pdiff, "\n", sep='')
 			if (pdiff < pdifflimit) break;
 		} else cat("Likelihood[0]: ", logPX, "\n")
 		
 		# prepare for next iteration
-		oldlogPX = logPX
-		iter = iter + 1
+		oldlogPX <- logPX
+		iter <- iter + 1
 	}
 	
 	return(lambda)
@@ -498,8 +498,8 @@ hmmViterbi <- function(pi, p, b, obs, steps) {
 	# b: emission probability matrix
 	# obs: observations
 	
-	nstates = length(pi)
-	T = length(obs[[1]])
+	nstates <- length(pi)
+	T <- length(obs[[1]])
 	
 	# take log of model parameters
 	logpi <- log(pi)
@@ -517,8 +517,8 @@ hmmViterbi <- function(pi, p, b, obs, steps) {
 	
 	# initialization
 	for (i in 1:nstates) {
-		v[i,1] = logpi[i] + logb[[i]][ obs[[1]][1], obs[[2]][1] ]
-		backptr[i,1] = 0
+		v[i,1] <- logpi[i] + logb[[i]][ obs[[1]][1], obs[[2]][1] ]
+		backptr[i,1] <- 0
 	}
 	
 	# recursion for v_t(j) = max_{q1...qt-1}(q1,...,qt-1, qt=Sj, O1,...,Ot)
@@ -526,26 +526,26 @@ hmmViterbi <- function(pi, p, b, obs, steps) {
 		for (j in 1:nstates) {
 			
 			# find max(v_t(i), pij) <- should be a seperate function in C implementation
-			statemax = -Inf
+			statemax <- -Inf
 			for (i in 1:nstates) {
-				a = v[i,t-1] + logp[[t]][i, j]
+				a <- v[i,t-1] + logp[[t]][i, j]
 				if  (a > statemax) {
-					statemax = a
-					backptr[j, t] = i
+					statemax <- a
+					backptr[j, t] <- i
 				}
 			}
 			
 			# calculate v_t(j)
-			v[j, t] = logb[[j]][ obs[[1]][t], obs[[2]][t] ] + statemax
+			v[j, t] <- logb[[j]][ obs[[1]][t], obs[[2]][t] ] + statemax
 		}
 	}
 	
-	pstates = max(v[,T])[1] # P(O,Q), index in case of tie
+	pstates <- max(v[,T])[1] # P(O,Q), index in case of tie
 	
 	# traceback to recover states that maximize P(Q|O)
-	q[T] = which(v[,T] == max(v[,T]))[1] # index in case of tie
+	q[T] <- which(v[,T] == max(v[,T]))[1] # index in case of tie
 	
-	for(t in T:2) q[t-1] = backptr[q[t],t]
+	for(t in T:2) q[t-1] <- backptr[q[t],t]
 	
 	# print info
 	cat("logP(observations, states) = ", pstates, "\n", sep='')
@@ -562,28 +562,28 @@ dupCoordinates <- function (q, sites) {
 	regions <- data.frame(id=rep(NA,length(q)), start=rep(NA,length(q)), end=rep(NA,length(q)))
 	states <- data.frame(id=sites$V1, pos=sites$V2, state=rep(NA,length(q))) # for debugging
 	
-	states[1,3] = ifelse(q[1] == 2, 'DUP', 'ND') # debug only
+	states[1,3] <- ifelse(q[1] == 2, 'DUP', 'ND') # debug only
 	
-	r = 1
+	r <- 1
 	if (q[1] == 2) {
-		regions[1,1] = as.character(sites[1,1])
-		regions[1,2] = sites[1,2]
+		regions[1,1] <- as.character(sites[1,1])
+		regions[1,2] <- sites[1,2]
 	}
 	
 	for (i in 2:length(q)) {
-		states[i,3] = ifelse(q[i] == 2, 'DUP', 'ND') # debug only
+		states[i,3] <- ifelse(q[i] == 2, 'DUP', 'ND') # debug only
 		
 		# nonduplicated -> duplicated
 		if (q[i-1] == 1 && q[i] == 2) {
-			regions[r,1] = as.character(sites[i,1])
-			regions[r,2] = sites[i,2]
+			regions[r,1] <- as.character(sites[i,1])
+			regions[r,2] <- sites[i,2]
 			next
 		}
 	
 		# duplicated -> nonduplicated
 		if (q[i-1] == 2 && q[i] == 1) {
-			regions[r,3] = sites[i-1, 2]
-			r = r+1
+			regions[r,3] <- sites[i-1, 2]
+			r <- r+1
 		}
 	}
 
