@@ -154,8 +154,8 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 		lrprob[2,i] <- pchisq(i, df=lrpar[2], ncp=lrpar[3]) - altsum # alternate
 		nullsum <- nullsum + lrprob[1,i]
 		altsum <- altsum + lrprob[2,i]
-		if (seenalt < 1 && lrprob[2,i] > 0) seenalt <- 1 # check if the alternative distribution has been entered 
-		if (lrprob[1,i] == 0 && lrprob[2,i] == 0 && seenalt > 0) break
+		if (seenalt == 0 && lrprob[2,i] > 0) seenalt <- 1 # check if the alternative distribution has been entered 
+		if (lrprob[1,i] == 0 && lrprob[2,i] == 0 && seenalt == 1) break
 		lrmax <- lrmax + 1
 	}
 	
@@ -178,8 +178,8 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 		covprob[2,i] <- ptruncnorm(i, mean=covmean_alt, sd=covpar[2], a=0, b=Inf) - altsum # alternate
 		nullsum <- nullsum + covprob[1,i]
 		altsum <- altsum + covprob[2,i]
-		if (seenalt > 0 && covprob[2,i] > 0) seenalt <- 1 # check if alternative distribution has been entered
-		if (covprob[1,i] == 0 && covprob[2,i] == 0 && seenalt > 0) break
+		if (seenalt == 0 && covprob[2,i] > 0) seenalt <- 1 # check if alternative distribution has been entered
+		if (covprob[1,i] == 0 && covprob[2,i] == 0 && seenalt == 1) break
 		covmax <- covmax + 1
 	}
 	
@@ -627,7 +627,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.0.1',"\n") # version 1/9/2018
+v <- paste('dupHMM.R 0.0.2',"\n") # version 1/11/2018
 
 # parse arguments
 
