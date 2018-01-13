@@ -109,7 +109,7 @@ fitCoverage <- function(coverage, lr) {
 	# parameter bounds
 	mu_min <- 0
 	mu_max <- 3*nullavg
-	sd_min <- 0
+	sd_min <- .Machine$double.xmin
 	sd_max <- Inf
 	
 	# find MLE parameter values
