@@ -87,33 +87,46 @@ lrllh <- function (par, x) {
 }
 
 covllh <- function (par, x) {
-	# null coverage ~ truncated_normal(mean=par[1], sd=par[2], lowerbound=0, upperbound=Inf)
-	# par[1] = truncated normal mean
-	# par[2] = truncated normal standard deviation
+	# coverage ~ par[1]*truncnormal(mean=par[2], sd=par[3], a=0, b=Inf) + (1-par[1])*lognormal(meanlog=log(2*par[2]), sdlog=log(par[4]))
+	# par[1] = probability x is from null distribution	
+	# par[2] = null truncated normal mean
+	# par[3] = null truncated normal standard deviation
+	# par[4] = alternative lognormal standard deviation
 	
-	llh <- dtruncnorm(x, mean=par[1], sd=par[2], a=0, b=Inf)
+	llh <- par[1] * dtruncnorm(x, mean=par[2], sd=par[3], a=0, b=Inf) + (1-par[1]) * dlnorm(x, meanlog=log(2*par[2]), sdlog=log(par[4]))
 	llh <- replace(llh, llh==0, .Machine$double.xmin)
 	-sum(log(llh))
 }
 
 fitCoverage <- function(coverage, lr) {
 	# approximate mean and variance of average individual coverage
-	nullcutoff <- 1
-	nondupidx <- which(lr<nullcutoff)
+	nullcutoff <- min(lr)
+	nondupidx <- which(lr <= nullcutoff)
+	inc <- 0.5
+	while(length(nondupidx) < 2) {
+		nullcutoff <- nullcutoff + inc
+		nondupidx <- which(lr <= nullcutoff)
+	}
+	
 	nullavg <- mean(coverage[nondupidx])
 	nullsd <- sqrt(var(coverage[nondupidx]))
 	
 	# approximate proportion of nonduplicated sites
-	pnull <- length(nondupidx)/length(lr)
+	pnullcutoff <- 2.705
+	pnull <- length(which(lr <= pnullcutoff))/length(lr)
 	
 	# parameter bounds
-	mu_min <- 0
-	mu_max <- 3*nullavg
-	sd_min <- .Machine$double.xmin
+	null_mu_min <- 0
+	null_mu_max <- 3*nullavg	
+	null_sd_min <- 1e-16	
+	alt_sd_min <- 1
 	sd_max <- Inf
 	
+	# set starting point for optimization
+	parguess <- c(pnull, nullavg, nullsd, 2*nullsd)
+	
 	# find MLE parameter values
-	fit <- optim(par=c(nullavg, nullsd), fn=covllh, method="L-BFGS-B", lower=c(mu_min, sd_min), upper=c(mu_max, sd_max), x=coverage)
+	fit <- optim(par=parguess, fn=covllh, method="L-BFGS-B", lower=c(1e-6, null_mu_min, null_sd_min, alt_sd_min), upper=c(0.999999, null_mu_max, sd_max, sd_max), x=coverage)
 	
 	return(fit$par)
 }
@@ -136,7 +149,7 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	
 	# estimate parameters for LR distribution
 	cat("Fitting LR distribution\n")
-	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[1], nullsd=covpar[2], tailcutoff=lrmax_quantile)
+	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[2], nullsd=covpar[3], tailcutoff=lrmax_quantile)
 
 	# calculate emission probabilities
 	cat("Calculating emission probabilities\n")
@@ -167,15 +180,16 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	# calculate probabilities of the observed coverage
 	covmax <- 1
 	seenalt <- 0
-	covmean_alt <- 2*covpar[1] # assume duplicated sites have twice the average coverage as nonduplicated sites
-	covprob[1,1] <- ptruncnorm(1, mean=covpar[1], sd=covpar[2], a=0, b=Inf)
-	covprob[2,1] <- ptruncnorm(1, mean=covmean_alt, sd=covpar[2], a=0, b=Inf)
+	alt_cov_mu <- log(2*covpar[2]) # assume duplicated sites have twice the average coverage as nonduplicated sites
+	alt_cov_sd <- log(covpar[4])
+	covprob[1,1] <- ptruncnorm(1, mean=covpar[2], sd=covpar[3], a=0, b=Inf) # null
+	covprob[2,1] <- plnorm(1, meanlog=alt_cov_mu, sdlog=alt_cov_sd) #alternative
 	nullsum <- covprob[1,1]
 	altsum <- covprob[2,1]
 	
 	for (i in covseq) {
-		covprob[1,i] <- ptruncnorm(i, mean=covpar[1], sd=covpar[2], a=0, b=Inf) - nullsum # null
-		covprob[2,i] <- ptruncnorm(i, mean=covmean_alt, sd=covpar[2], a=0, b=Inf) - altsum # alternate
+		covprob[1,i] <- ptruncnorm(i, mean=covpar[2], sd=covpar[3], a=0, b=Inf) - nullsum # null
+		covprob[2,i] <- plnorm(i, meanlog=alt_cov_mu, sdlog=alt_cov_sd) - altsum # alternate
 		nullsum <- nullsum + covprob[1,i]
 		altsum <- altsum + covprob[2,i]
 		if (seenalt == 0 && covprob[2,i] > 0) seenalt <- 1 # check if alternative distribution has been entered
@@ -627,7 +641,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.0.2',"\n") # version 1/11/2018
+v <- paste('dupHMM.R 0.1.0',"\n") # version 1/14/2018
 
 # parse arguments
 
@@ -643,7 +657,7 @@ Usage:
 Options:
    --maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
    --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
-   --lrquantile=<float>   Ignore LRs above this qunatile when fitting alternative LR distribution [default: 1.0]
+   --lrquantile=<float>   Ignore LRs above this quantile when fitting alternative LR distribution [default: 1.0]
 ' -> doc
 
 opts <- docopt(doc, version=v)
