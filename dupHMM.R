@@ -41,20 +41,24 @@ fitlr <- function (lr, coverage, nullmean, nullsd, tailcutoff = 1.0) {
 	# nullsd: estimate of the standard deviation for the average individual coverage for nonduplicated sites
 	# tailcutoff: fit alternative distribution to LRs under the 'tailcutoff' quantile (avoid influence of extreme values)
 	
-	# subset of LR values for sites that have < 0.95 probability of coming from null according to coverage and are within the 'tailcutoff' percentile
-	covprob <- 0.95 # coverage used to avoid influencing fit by null sites with heterozygote advantage
+	# coverage value for which any coverage greater would have less than 0.95 probability of coming from null
+	# coverage used to avoid influencing fit by null sites with heterozygote advantage	
+	covprob <- 0.95
 	covlower <- qtruncnorm(covprob, mean=nullmean, sd=nullsd, a=0, b=Inf)
-	lrupper <- quantile(lr, tailcutoff)
-	sublr <- lr[which(coverage > covlower & lr < lrupper)]
+	
+	# truncate sites with extremeley high LR
+	truncidx <- which(lr < quantile(lr, tailcutoff))
+	sublr <- lr[truncidx]
+	subcov <- coverage[truncidx]
 	
 	# estimate proportion of LRs under the null
 	lrquantile <- 2.705 # 95% quantile for null LR distribution
 	pnull <- 1 - length(which(sublr > lrquantile))/length(sublr)
 	
-	# approximate median of alternative LR values
-	ncpguess <- mean(sublr)
+	# approximate mean of alternative LR values
+	ncpguess <- mean(sublr[which(subcov > covlower)])
 	
-	fit <- optim(par=c(pnull, 1, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(0, 0, 0), upper=c(1, Inf, Inf), x=sublr)
+	fit <- optim(par=c(pnull, 1, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(1e-6, 0, 0), upper=c(0.999999, Inf, Inf), x=sublr)
 	
 	return(fit$par)
 }
@@ -641,7 +645,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.1.0',"\n") # version 1/14/2018
+v <- paste('dupHMM.R 0.1.1',"\n") # version 1/14/2018
 
 # parse arguments
 
