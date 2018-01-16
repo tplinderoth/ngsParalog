@@ -122,7 +122,7 @@ fitCoverage <- function(coverage, lr) {
 	# parameter bounds
 	null_mu_min <- 0
 	null_mu_max <- 3*nullavg	
-	null_sd_min <- 1e-16	
+	null_sd_min <- 1e-12
 	alt_sd_min <- 1
 	sd_max <- Inf
 	
