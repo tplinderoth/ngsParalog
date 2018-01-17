@@ -577,35 +577,63 @@ dupCoordinates <- function (q, sites) {
 	# q: vector of states that maximizes P(Q|O)
 	# sites: matrix of sequence IDs and positions corresponding to q
 	
-	regions <- data.frame(id=rep(NA,length(q)), start=rep(NA,length(q)), end=rep(NA,length(q)))
-	states <- data.frame(id=sites$V1, pos=sites$V2, state=rep(NA,length(q))) # for debugging
-	
-	states[1,3] <- ifelse(q[1] == 2, 'DUP', 'ND') # debug only
-	
-	r <- 1
-	if (q[1] == 2) {
-		regions[1,1] <- as.character(sites[1,1])
-		regions[1,2] <- sites[1,2]
-	}
-	
-	for (i in 2:length(q)) {
-		states[i,3] <- ifelse(q[i] == 2, 'DUP', 'ND') # debug only
-		
-		# nonduplicated -> duplicated
-		if (q[i-1] == 1 && q[i] == 2) {
-			regions[r,1] <- as.character(sites[i,1])
-			regions[r,2] <- sites[i,2]
-			next
-		}
-	
-		# duplicated -> nonduplicated
-		if (q[i-1] == 2 && q[i] == 1) {
-			regions[r,3] <- sites[i-1, 2]
-			r <- r+1
-		}
-	}
+	cat("calculating regions\n")
+	#regions <- data.frame(id=rep(NA,length(q)), start=rep(NA,length(q)), end=rep(NA,length(q)))
+	#states <- data.frame(id=sites$V1, pos=sites$V2, state=rep(NA,length(q))) # for debugging
+	#
+	#states[1,3] <- ifelse(q[1] == 2, 'DUP', 'ND') # debug only
+	#
+	#r <- 1
+	#if (q[1] == 2) {
+	#	regions[1,1] <- as.character(sites[1,1])
+	#	regions[1,2] <- sites[1,2]
+	#}
+	#
+	#for (i in 2:length(q)) {
+	#	states[i,3] <- ifelse(q[i] == 2, 'DUP', 'ND') # debug only
+	#	
+	#	# nonduplicated -> duplicated
+	#	if (q[i-1] == 1 && q[i] == 2) {
+	#		regions[r,1] <- as.character(sites[i,1])
+	#		regions[r,2] <- sites[i,2]
+	#		next
+	#	}
+	#
+	#	# duplicated -> nonduplicated
+	#	if (q[i-1] == 2 && q[i] == 1) {
+	#		regions[r,3] <- sites[i-1, 2]
+	#		r <- r+1
+	#	}
+	#}
+	#
+	#regions <- na.omit(regions)
 
-	regions <- na.omit(regions)
+	# faster in R:
+	lag <- c(tail(q,-1), NA)
+	breaks <- which((q == lag) == FALSE)
+	start <- NA
+	end <- NA
+	
+	# calculate regions
+	if (q[breaks[1]] == 1) { # start is nonduplicated
+		start <- breaks[c(TRUE,FALSE)]+1
+		end <- breaks[c(FALSE,TRUE)]
+		if (start[length(start)] > end[length(end)]) end <- c(end, length(q))
+	} else { # start is duplicated
+		start <- c(1, breaks[c(FALSE,TRUE)]+1)
+		end <- breaks[c(TRUE,FALSE)]
+		if (start[length(start)] > end[length(end)]) end <- c(end, length(q))
+	}
+	
+	nregions <- length(start)
+	regions <- matrix(NA, nrow=nregions, ncol=3)
+	for (i in 1:nregions) {
+		regions[i,1] <- as.character(sites[start[i],1])
+		regions[i,2] <- sites[start[i],2]
+		regions[i,3] <- sites[end[i],2]
+	}
+	
+	states <- data.frame(id=sites$V1, pos=sites$V2, state=q-1) # change to 0=nonduplicated, 1=duplicated
 	
 	return(list(regions, states))
 }
@@ -645,7 +673,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.1.1',"\n") # version 1/14/2018
+v <- paste('dupHMM.R 0.1.2',"\n") # version 1/16/2018
 
 # parse arguments
 
