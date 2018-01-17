@@ -577,7 +577,6 @@ dupCoordinates <- function (q, sites) {
 	# q: vector of states that maximizes P(Q|O)
 	# sites: matrix of sequence IDs and positions corresponding to q
 	
-	cat("calculating regions\n")
 	#regions <- data.frame(id=rep(NA,length(q)), start=rep(NA,length(q)), end=rep(NA,length(q)))
 	#states <- data.frame(id=sites$V1, pos=sites$V2, state=rep(NA,length(q))) # for debugging
 	#
@@ -665,10 +664,10 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 	q <- hmmViterbi(pi=lambda[[1]], p=lambda[[2]], b=lambda[[3]], obs=emit[[2]], steps=lr$V2)
 	
 	# find coordinates of duplicated regions
+	cat("calculating regions\n")
 	regions <- dupCoordinates(q=q, sites=lr[,1:2])
 	
-	#return(regions) # returns a list of regions and states - only return regions in final implementation
-	return(list(regions[[1]], regions[[2]], lambda[[1]], lambda[[2]])) # return states and estimate of initial state distribution and transition matrix for debugging
+	return(list(regions[[1]], regions[[2]], lambda[[1]], lambda[[2]])) # return states and estimate of initial state distribution and transition matrix
 }
 
 ###### end functions ######
