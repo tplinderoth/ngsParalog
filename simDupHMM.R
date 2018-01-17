@@ -32,12 +32,12 @@ simDupHmm <- function (nsnp, theta, nullr, duplr, nulcov, dupcov, pi, p, seqid='
 	# find initial state at first SNP
 	if (rand[1] < pi[1]) {
 		simsites[1,] <- c(seqid, site, nullr[1,3], nullr[1,4], nullr[1,5])
-		states[1,] <- c(seqid, site, 'ND')
+		states[1,] <- c(seqid, site, 0)
 		coverage[1,] <- c(seqid, site, nulcov[1,3])
 		s <- 1
 	} else {
 		simsites[1,] <- c(seqid, site, duplr[1,3], duplr[1,4], duplr[1,5])
-		states[1,] <- c(seqid, site, 'DUP')
+		states[1,] <- c(seqid, site, 1)
 		coverage[1,] <- c(seqid, site, dupcov[1,3])
 		s <- 2
 	}
@@ -64,12 +64,12 @@ simDupHmm <- function (nsnp, theta, nullr, duplr, nulcov, dupcov, pi, p, seqid='
 		if (s == 1) {
 			nn <- sample(1:nrow(nullr), 1)
 			simsites[t,] <- c(seqid, site, nullr[nn,3], nullr[nn,4], nullr[nn,5])
-			states[t,] <- c(seqid, site, 'ND')
+			states[t,] <- c(seqid, site, 0)
 			coverage[t,] <- c(seqid, site, nulcov[nn,3])
 		} else {
 			dn <- sample(1:nrow(duplr), 1)
 			simsites[t,] <- c(seqid, site, duplr[dn,3], duplr[dn,4], duplr[dn,5])
-			states[t,] <- c(seqid, site, 'DUP')
+			states[t,] <- c(seqid, site, 1)
 			coverage[t,] <- c(seqid, site, dupcov[dn,3])
 		}
 	}
@@ -96,14 +96,14 @@ subBalancingSnps <- function (subrange, simsites, states, coverage, ballr, balco
 	# substitute balancing selection sites for nonduplicated sites
 	for (i in seq(from=1, to=(length(idx)-1), by=2)) {
 		# make sure substitution region does not overlap a duplicated region
-		if (length(which(states$state[idx[i]:idx[i+1]]=="DUP")) > 0) stop(paste(subrange[i], "-", subrange[i+1], " spans a duplicated region", sep=''))
+		if (length(which(states$state[idx[i]:idx[i+1]]==1)) > 0) stop(paste(subrange[i], "-", subrange[i+1], " spans a duplicated region", sep=''))
 		
 		# substitute
 		rand <- sample(x=1:nrow(ballr), size=(idx[i+1]-idx[i])+1)
 		k <- 1;
 		for (j in idx[i]:idx[i+1]) {
 			simsites[j,3:5] <- ballr[rand[k], 3:5];
-			states[j,3] <- "BAL"
+			states[j,3] <- 2 # let 2 = "BAL"
 			coverage[j,3] <- balcov[rand[k],3] 
 			k <- k+1
 		}
@@ -118,13 +118,13 @@ hmmError <- function(simstates, hmmstates) {
 
 	simstates <- as.character(simstates)
 	hmmstates <- as.character(hmmstates)
-	simstates <- replace(simstates, simstates == 'BAL', 'ND')
+	simstates <- replace(simstates, simstates == 2, 0)
 	n <- length(simstates)
 	falsepos <- 0
 	falseneg <- 0
 	for (i in 1:n) {
 		if (simstates[i] != hmmstates[i]) {
-			if (simstates[i] == "ND") falsepos <- falsepos+1 else falseneg <- falseneg+1		
+			if (simstates[i] == 0) falsepos <- falsepos+1 else falseneg <- falseneg+1		
 		}
 	}
 	misid <- falsepos + falseneg
