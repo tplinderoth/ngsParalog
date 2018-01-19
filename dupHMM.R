@@ -58,16 +58,15 @@ fitlr <- function (lr, coverage, nullmean, nullsd, tailcutoff = 1.0) {
 	# approximate mean of alternative LR values
 	ncpguess <- mean(sublr[which(subcov > covlower)])
 	
-	fit <- optim(par=c(pnull, 1, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(1e-6, 0, 0), upper=c(0.999999, Inf, Inf), x=sublr)
+	fit <- optim(par=c(pnull, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(1e-6, 0), upper=c(0.999999, Inf), x=sublr)
 	
 	return(fit$par)
 }
 
 lrllh <- function (par, x) {
-	# LR ~ par[1]*[0.5*chisq(df=0, ncp=0) + 0.5*chisq(df=1, ncp=0)] + (1-par[1])*chisq(df=par[2], ncp=par[3])
+	# LR ~ par[1]*[0.5*chisq(df=0, ncp=0) + 0.5*chisq(df=1, ncp=0)] + (1-par[1])*chisq(df=1, ncp=par[2])
 	# par[1] = probability LR comes from null distribution 
-	# par[2] = df for alternate chisquare distribution
-	# par[3] = noncentrality parameter for alternate chisquare distribution
+	# par[2] = noncentrality parameter for alternate chisquare distribution
 	
 #	llh <- rep(NA, length(x))
 #	for (i in 1:length(x)) {
@@ -83,7 +82,7 @@ lrllh <- function (par, x) {
 	
 	dzero <- par[1]*0.5
 	y1 <- rep(dzero, nzero)
-	y2 <- dzero*dchisq(x, df=1, ncp=0) + (1-par[1])*dchisq(x, df=par[2], ncp=par[3])
+	y2 <- dzero*dchisq(x, df=1, ncp=0) + (1-par[1])*dchisq(x, df=1, ncp=par[2])
 	
 	llh <- c(y1, y2)
 	llh <- replace(llh, llh==0, .Machine$double.xmin)
@@ -162,13 +161,13 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	lrmax <- 1
 	seenalt <- 0
 	lrprob[1,1] <- 0.5 + 0.5*pchisq(1,1)
-	lrprob[2,1] <- pchisq(1, df=lrpar[2], ncp=lrpar[3])
+	lrprob[2,1] <- pchisq(1, df=1, ncp=lrpar[2])
 	nullsum <- lrprob[1,1]
 	altsum <- lrprob[2,1]
 	
 	for (i in lrseq) {
 		lrprob[1,i] <- (0.5 + 0.5*pchisq(q=i, df=1)) - nullsum # null
-		lrprob[2,i] <- pchisq(i, df=lrpar[2], ncp=lrpar[3]) - altsum # alternate
+		lrprob[2,i] <- pchisq(i, df=1, ncp=lrpar[2]) - altsum # alternate
 		nullsum <- nullsum + lrprob[1,i]
 		altsum <- altsum + lrprob[2,i]
 		if (seenalt == 0 && lrprob[2,i] > 0) seenalt <- 1 # check if the alternative distribution has been entered 
@@ -672,7 +671,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.1.2',"\n") # version 1/16/2018
+v <- paste('dupHMM.R 0.1.3',"\n") # version 1/18/2018
 
 # parse arguments
 
