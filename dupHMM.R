@@ -215,15 +215,28 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 		}
 	}
 	
-	# assign small probability to emissions that are zero under both the null and alternative
-	minval <- min(c(min(b[[1]][which(b[[1]]>0)]), min(b[[2]][which(b[[2]]>0)]))) # smallest nonzero value occuring in null or alternative
-	zeroidx <- which(b[[1]] == 0 & b[[2]] == 0) # indices that are zero under null and alternative
-	b[[1]][zeroidx] <- minval
-	b[[2]][zeroidx] <- minval
+	# assign small probability to emissions that are zero (or less than minimum machine precision) under both the null and alternative
+	minp <- 2 * .Machine$double.xmin # multiply by two to avoid Inf scaling value when pi=[0.5, 0.5]
+	i <- 0
 	
-	# make the emission probs sum to one
-	b[[1]] <- b[[1]]/sum(b[[1]]) # null emissions must sum to 1
-	b[[2]] <- b[[2]]/sum(b[[2]]) # alternative emissions must sum to 1
+	repeat {
+		# make the emission probs sum to one
+		b[[1]] <- b[[1]]/sum(b[[1]]) # null emissions must sum to 1
+		b[[2]] <- b[[2]]/sum(b[[2]]) # alternative emissions must sum to 1
+		
+		if (i == 0 && min(c(min(b[[1]][which(b[[1]]>0)]), min(b[[2]][which(b[[2]]>0)]))) < minp) {
+			cat("Minimum nonzero emission probabilities are below machine precision - consider decreasing lrquantile\n")
+		}
+		
+		zeroidx <- which(b[[1]] < minp & b[[2]] < minp) # indices that are zero (or < machine precision) under null and alternative
+		if (length(zerodix) > 0) {
+			minval <- ifelse(i > 0, i*10*minp, minp)
+			b[[1]][zeroidx] <- minval
+			b[[2]][zeroidx] <- minval
+		}
+		else break
+		i <- i+1
+	}
 	
 	# bound the maximum LR and coverage values
 	lr[lr==0] <- 0.1
@@ -524,10 +537,6 @@ hmmViterbi <- function(pi, p, b, obs, steps) {
 	logp <- seqPMatrix(p=p, sites=steps, logscale=1)
 	logb <- list(log(b[[1]]), log(b[[2]]))
 	
-	# set log(0) emission probabilities to very small values to avoid -Inf
-	# logb[[1]][logb[[1]] == -Inf] <- .Machine$double.xmin
-	# logb[[2]][logb[[2]] == -Inf] <- .Machine$double.xmin
-	
 	# initialize data structures for storing viterbi variables
 	v <- matrix(data=NA, nrow=nstates, ncol=T) # path probability matrix
 	backptr <- matrix(data=NA, nrow=nstates, ncol=T) # traceback pointer matrix
@@ -672,7 +681,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.1.4',"\n") # version 1/21/2018
+v <- paste('dupHMM.R 0.1.5',"\n") # version 1/22/2018
 
 # parse arguments
 
