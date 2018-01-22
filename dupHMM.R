@@ -229,7 +229,7 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 		}
 		
 		zeroidx <- which(b[[1]] < minp & b[[2]] < minp) # indices that are zero (or < machine precision) under null and alternative
-		if (length(zerodix) > 0) {
+		if (length(zeroidx) > 0) {
 			minval <- ifelse(i > 0, i*10*minp, minp)
 			b[[1]][zeroidx] <- minval
 			b[[2]][zeroidx] <- minval
