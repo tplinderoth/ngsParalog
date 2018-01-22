@@ -167,7 +167,8 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	
 	for (i in lrseq) {
 		lrprob[1,i] <- (0.5 + 0.5*pchisq(q=i, df=1)) - nullsum # null
-		lrprob[2,i] <- pchisq(i, df=1, ncp=lrpar[2]) - altsum # alternate
+		palt <- pchisq(i, df=1, ncp=lrpar[2])
+		if (palt >= altsum) lrprob[2,i] <- palt - altsum else break # alternative (need this to check for R numerical instabilitiy)
 		nullsum <- nullsum + lrprob[1,i]
 		altsum <- altsum + lrprob[2,i]
 		if (seenalt == 0 && lrprob[2,i] > 0) seenalt <- 1 # check if the alternative distribution has been entered 
@@ -671,7 +672,7 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.1.3',"\n") # version 1/18/2018
+v <- paste('dupHMM.R 0.1.4',"\n") # version 1/21/2018
 
 # parse arguments
 
