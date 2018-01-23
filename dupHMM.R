@@ -168,18 +168,13 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 	for (i in lrseq) {
 		lrprob[1,i] <- (0.5 + 0.5*pchisq(q=i, df=1)) - nullsum # null
 		palt <- pchisq(i, df=1, ncp=lrpar[2])
-		if (palt >= altsum) lrprob[2,i] <- palt - altsum else break # alternative (need this to check for R numerical instabilitiy)
+		if (palt >= altsum) lrprob[2,i] <- palt - altsum else break # alternative (need this to check for R numerical instability)
 		nullsum <- nullsum + lrprob[1,i]
 		altsum <- altsum + lrprob[2,i]
 		if (seenalt == 0 && lrprob[2,i] > 0) seenalt <- 1 # check if the alternative distribution has been entered 
 		if (lrprob[1,i] == 0 && lrprob[2,i] == 0 && seenalt == 1) break
 		lrmax <- lrmax + 1
 	}
-	
-	# assign very small probability to LR emissions with zero probability under the null and alternative distributions
-	#lrprob[,which(lrprob[1,]==0 & lrprob[2,]==0)] <- .Machine$double.xmin
-	#lrprob[1,] <- lrprob[1,]/sum(lrprob[1,])
-	#lrprob[2,] <- lrprob[2,]/sum(lrprob[2,])
 	
 	# calculate probabilities of the observed coverage
 	covmax <- 1
@@ -201,11 +196,6 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 		covmax <- covmax + 1
 	}
 	
-	# assign very small probability to coverage emissions with zero probability under the null and alternative distributions
-	# covprob[,which(covprob[1,]==0 & covprob[2,]==0)] <- .Machine$double.xmin
-	# covprob[1,] <- covprob[1,]/sum(covprob[1,])
-	# covprob[2,] <- covprob[2,]/sum(covprob[2,])
-	
 	# calculate joint probabilities of LR and coverage
 	b <- list(matrix(NA, nrow=lrmax, ncol=covmax), matrix(NA, nrow=lrmax, ncol=covmax))
 	for (i in 1:lrmax) {
@@ -215,27 +205,20 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile) {
 		}
 	}
 	
-	# assign small probability to emissions that are zero (or less than minimum machine precision) under both the null and alternative
-	minp <- 2 * .Machine$double.xmin # multiply by two to avoid Inf scaling value when pi=[0.5, 0.5]
-	i <- 0
-	
-	repeat {
-		# make the emission probs sum to one
-		b[[1]] <- b[[1]]/sum(b[[1]]) # null emissions must sum to 1
-		b[[2]] <- b[[2]]/sum(b[[2]]) # alternative emissions must sum to 1
-		
-		if (i == 0 && min(c(min(b[[1]][which(b[[1]]>0)]), min(b[[2]][which(b[[2]]>0)]))) < minp) {
-			cat("Minimum nonzero emission probabilities are below machine precision - consider decreasing lrquantile\n")
-		}
-		
-		zeroidx <- which(b[[1]] < minp & b[[2]] < minp) # indices that are zero (or < machine precision) under null and alternative
-		if (length(zeroidx) > 0) {
-			minval <- ifelse(i > 0, i*10*minp, minp)
-			b[[1]][zeroidx] <- minval
-			b[[2]][zeroidx] <- minval
-		}
-		else break
-		i <- i+1
+	# assign uniform emission probability to cases with zero probability under both the null and alternative
+	zeroidx <- which(b[[1]] == 0 & b[[2]] == 0) # indices that are zero (or < machine precision) under null and alternative
+	if (length(zeroidx) > 0) {
+		uniprob <- 1/(nrow(b[[1]])*ncol(b[[1]]))
+		b[[1]][zeroidx] <- uniprob
+		b[[2]][zeroidx] <- uniprob
+	}
+
+	# make the emission probs sum to one
+	b[[1]] <- b[[1]]/sum(b[[1]]) # null emissions must sum to 1
+	b[[2]] <- b[[2]]/sum(b[[2]]) # alternative emissions must sum to 1
+
+	if (min(c(min(b[[1]][which(b[[1]]>0)]), min(b[[2]][which(b[[2]]>0)]))) < .Machine$double.xmin) {
+		cat("Smallest nonzero emission probability less than machine precision - consider decreasing lrquantile\n")
 	}
 	
 	# bound the maximum LR and coverage values
@@ -299,9 +282,7 @@ hmmForward <- function (obs, pi, p, b) {
 		# alpha(t+1, i) = sum_i=1_to_N( alpha(t,j) * p_ji * b_i(O_t+1) )
 		for (i in 1:nstates) {
 			alpha[t, i] <- 0
-			for (j in 1:nstates) {
-				alpha[t, i] <- alpha[t, i] + alpha[t-1, j] * p[[t]][j, i]
-			}
+			for (j in 1:nstates) alpha[t, i] <- alpha[t, i] + alpha[t-1, j] * p[[t]][j, i]
 			alpha[t, i] <- alpha[t, i] * b[[i]][ obs[[1]][t], obs[[2]][t] ]
 			c[t] <- c[t] + alpha[t, i]
 		}
@@ -338,9 +319,7 @@ hmmBackward <- function(obs, p, b, c) {
 	for (t in (T-1):1) {
 		for (i in 1:nstates) {
 			beta[t, i] <- 0
-			for (j in 1:nstates) {
-				beta[t, i] <- beta[t, i] + p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j]
-			}
+			for (j in 1:nstates) beta[t, i] <- beta[t, i] + p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j]
 			beta[t, i] <- c[t] * beta[t, i]
 		}
 	}
