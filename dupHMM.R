@@ -726,7 +726,7 @@ Options:
    --maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
    --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
    --lrquantile=<float>   Ignore LRs above this quantile when fitting alternative LR distribution [default: 1.0]
-   --maxcoverage=<float>  Maximum coverage when fitting coverage distribution
+   --maxcoverage=<float>  Maximum coverage for fitting coverage distribution
    --dupcovmin=<float>    Lower bound for duplicated coverage distribution
 ' -> doc
 
