@@ -58,9 +58,14 @@ fitlr <- function (lr, coverage, nullmean, nullsd, tailcutoff = 1.0) {
 	# approximate mean of alternative LR values
 	ncpguess <- mean(sublr[which(subcov > covlower)])
 	
-	fit <- optim(par=c(pnull, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(1e-6, 0), upper=c(0.999999, Inf), x=sublr)
+	fit <- tryCatch(
+			optim(par=c(pnull, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(1e-6, 0), upper=c(0.999999, Inf), x=sublr)$par,
+			error = function(err) {
+				cat(paste("LR DISTRIBUTION OPTIMIZATION FAILURE:\n", err, sep=''))
+				return(NA)
+			})
 	
-	return(fit$par)
+	return(fit)
 }
 
 lrllh <- function (par, x) {
@@ -137,16 +142,24 @@ fitCoverage <- function(coverage, lr, maxcov=NA, minalt=NA) {
 		alt_min <- ifelse(nullavg > nullsd, nullavg-nullsd, nullavg)
 	} else {
 		alt_min <- minalt
-		if (alt_min > alt_max) stop("alternative coverage distribution minimum is set greater than the max")
+		if (alt_min > alt_max) {
+			print("alternative coverage distribution minimum is set greater than the max")
+			return(NA)
+		}
 	}
 	
 	# set starting point for optimization
 	parguess <- c(pnull, nullavg, nullsd, 2*nullsd, nullavg+nullsd)
 	
 	# find MLE parameter values
-	fit <- optim(par=parguess, fn=covllh, method="L-BFGS-B", lower=c(1e-6, null_mu_min, 1e-12, 1e-12, alt_min), upper=c(0.999999, null_mu_max, Inf, Inf, alt_max), x=coverage)
+	fit <- tryCatch( 
+			optim(par=parguess, fn=covllh, method="L-BFGS-B", lower=c(1e-6, null_mu_min, 1e-12, 1e-12, alt_min), upper=c(0.999999, null_mu_max, Inf, Inf, alt_max), x=coverage)$par,
+			error = function(err) {
+				print(paste("COVERAGE DISTRIBUTION OPTIMIZATION FAILURE:", err, sep=''))
+				return(NA)
+			})
 	
-	return(fit$par)
+	return(fit)
 }
 
 initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, min_alt_cov=NA) {
@@ -163,20 +176,22 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	
 	# estimate parameters for null coverage distribution
 	cat("Fitting coverage distribution\n")
-	covpar <- fitCoverage(coverage, lr)
+	covpar <- fitCoverage(coverage, lr, maxcov=maxcoverage, minalt=min_alt_cov)
+	if (is.na(covpar)) stop("Unable to fit coverage distribution")
 	
 	# print fitted coverage distribution params
 	covparams <- c(covpar[1], covpar[2], covpar[3], 2*covpar[2], covpar[4], covpar[5])
-	names(covparams) <- c("probNull", "nullMean", "nullSD", "altMean", "altSD", "altMin")
+	names(covparams) <- c("ndProb", "ndMean", "ndSD", "dupMean", "dupSD", "dupMin")
 	print(covparams)
 	
 	# estimate parameters for LR distribution
 	cat("Fitting LR distribution\n")
 	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[2], nullsd=covpar[3], tailcutoff=lrmax_quantile)
+	if (is.na(lrpar)) stop("Unable to fit LR distribution")
 	
 	# print fitted LR distribution params
 	lrparams <- c(lrpar[1], lrpar[2])
-	names(lrparams) <- c("probNull", "altNCP")
+	names(lrparams) <- c("ndProb", "dupNCP")
 	print(lrparams)
 	
 	# calculate emission probabilities
@@ -294,6 +309,7 @@ hmmForward <- function (obs, pi, p, b) {
 		alpha[1, i] <- pi[i] * b[[i]][ obs[[1]][1], obs[[2]][1] ] # alpha(1,i) = pi_i * b_i(O1)
 		c[1] <- c[1] + alpha[1,i]
 	}
+	if (c[1] == 0) stop("Scaling variable is zero")
 	
 	# scale the alpha[1,i]
 	c[1] <- 1/c[1]
@@ -310,6 +326,7 @@ hmmForward <- function (obs, pi, p, b) {
 			alpha[t, i] <- alpha[t, i] * b[[i]][ obs[[1]][t], obs[[2]][t] ]
 			c[t] <- c[t] + alpha[t, i]
 		}
+		if (c[t] == 0) stop("Scaling variable is zero")
 		
 		# scale the forward variables
 		c[t] <- 1/c[t]
@@ -373,6 +390,7 @@ hmmStateVars <- function (obs, alpha, beta, p, b) {
 		for (i in 1:nstates) {
 			for (j in 1:nstates) px <- px + ( alpha[t,i] * p[[t+1]][i, j] * b[[j]][ obs[[1]][t+1], obs[[2]][t+1] ] * beta[t+1, j] )
 		}
+		if (px == 0) stop("Probability of data is zero ")
 		
 		
 		for (i in 1:nstates) {
@@ -389,6 +407,9 @@ hmmStateVars <- function (obs, alpha, beta, p, b) {
 	px <- 0
 	for (i in 1:nstates)
 		px <- px + alpha[T, i]
+	
+	if (px == 0) stop("Probability of data is zero")
+	
 	for (i in 1:nstates)
 		psi[T, i] <- alpha[T, i]/px
 	
@@ -426,6 +447,7 @@ hmmEstParam <- function(gamma, psi, estimate=c(1,2,3), obs=NA) {
 					expij <- expij + gamma[[t]][i,j]
 					exi <- exi + psi[t,i]
 				}
+				if (exi == 0) stop("Attempt to divide by zero")
 				params[[2]][i,j] <- expij/exi
 			}
 		}
@@ -454,6 +476,7 @@ hmmEstParam <- function(gamma, psi, estimate=c(1,2,3), obs=NA) {
 				params[[3]][[i]][ obs[[1]][t], obs[[2]][t] ] <- params[[3]][[i]][ obs[[1]][t], obs[[2]][t] ] + psi[t, i]
 				exi <- exi + psi[t, i]
 			}
+			if (exi == 0) stop("Attempt to divide by zero")
 			for (j in 1:nrow(params[[3]][[1]])) {
 				for (k in 1:ncol(params[[3]][[1]])) params[[3]][[i]][j,k] <- params[[3]][[i]][j,k]/exi
 			}
@@ -489,32 +512,32 @@ hmmBaumWelch <- function(obs, steps, pi, p, b, maxiter=100, pdifflimit=1e-4, est
 	oldlogPX <- 0
 	logPX <- 0
 	iter <- 0
-
+	
 	while (iter < maxiter) {
 		seqp <- seqPMatrix(p=lambda[[2]], sites=steps, logscale=0)
 		
 		# calculate forward variables
 		fvar <- hmmForward(obs=obs, pi=lambda[[1]], p=seqp, b=lambda[[3]])
-		
+
 		# calculate backward variables
 		bvar <- hmmBackward(obs=obs, p=seqp, b=lambda[[3]], c=fvar[[2]])
-		
+
 		# calculate probability of i->j and of being in state i at time t
 		svar <- hmmStateVars(obs=obs, alpha=fvar[[1]], beta=bvar, p=seqp, b=lambda[[3]])
-		
+
 		# estimate model parameters - only need to estimate initital distribution and transition matrix
 		lambda[est] <- hmmEstParam(gamma=svar[[1]], psi=svar[[2]], estimate=est, obs=obs)[est]
-		
+
 		# calculate log likelihood of the data
 		logPX <- hmmProbObs(c=fvar[[2]])
-		
+
 		# check for terminating conditions
 		if (iter > 0) {
 			pdiff <- logPX - oldlogPX
 			cat("Likelihood [", iter, "]: ", logPX, ", Difference in log probability: ", pdiff, "\n", sep='')
 			if (pdiff < pdifflimit) break;
 		} else cat("Likelihood[0]: ", logPX, "\n")
-		
+
 		# prepare for next iteration
 		oldlogPX <- logPX
 		iter <- iter + 1
@@ -703,24 +726,27 @@ Options:
    --maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
    --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
    --lrquantile=<float>   Ignore LRs above this quantile when fitting alternative LR distribution [default: 1.0]
-   --maxcoverage=<float>  Maximum coverage when fitting coverage distribution [default: NA]
-   --dupcovmin=<float>    Lower bound for duplicated coverage distribution [default: NA]
+   --maxcoverage=<float>  Maximum coverage when fitting coverage distribution
+   --dupcovmin=<float>    Lower bound for duplicated coverage distribution
 ' -> doc
 
 opts <- docopt(doc, version=v)
 
 # set and check options
 em_max_iter <- as.numeric(opts$maxiter)
-pdiff <- as.numeric(opts$probdiff)
-lrcutoff <- as.numeric(opts$lrquantile)
-maxcov <- as.numeric(opts$maxcoverage)
-alt_cov_lb <- as.numeric(opts$dupcovmin)
-
 if (em_max_iter < 1) stop("maxiter must be > 1")
+
+pdiff <- as.numeric(opts$probdiff)
 if (pdiff <= 0) stop("probdiff must be > 0")
+
+lrcutoff <- as.numeric(opts$lrquantile)
 if (lrcutoff <= 0 || lrcutoff > 1) stop("lrquantile must be in range (0,1]")
-if (maxcov <= 0) stop("maxcoverage must be > 0")
-if (alt_cov_lb < 0) stop("altcovmin cannot be negative")
+
+maxcov <- NA
+if (!is.null(opts$maxcoverage)) maxcov <- as.numeric(opts$maxcoverage)
+
+alt_cov_lb <- NA
+if (!is.null(opts$dupcovmin)) alt_cov_lb <- as.numeric(opts$dupcovmin)
 
 # open file connections
 lrf <- read.table(opts$lrfile)
