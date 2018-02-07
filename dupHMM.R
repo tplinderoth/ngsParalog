@@ -138,14 +138,13 @@ fitCoverage <- function(coverage, lr, maxcov=NA, minalt=NA) {
 	null_mu_max <- 3*nullavg
 	
 	alt_max <- 2*null_mu_max
-	if (is.na(minalt)) {
-		alt_min <- ifelse(nullavg > nullsd, nullavg-nullsd, nullavg)
-	} else {
-		alt_min <- minalt
-		if (alt_min > alt_max) {
-			print("alternative coverage distribution minimum is set greater than the max")
+	if (!is.na(maxcov) && alt_max > maxcov) cat(paste("WARNING: Max duplicated mean coverage of", alt_max, "exceeds --maximumcoverage", maxcov, "\n"))
+
+	alt_min <- minalt
+	if (is.na(alt_min)) alt_min <- ifelse(nullavg > nullsd, nullavg-nullsd, nullavg)
+	if (alt_min > alt_max) {
+			cat("duplicated coverage distribution minimum is set greater than the max\n")
 			return(NA)
-		}
 	}
 	
 	# set starting point for optimization
@@ -175,9 +174,9 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	covprob <- matrix(NA, nrow=2, ncol=length(covseq)+1)
 	
 	# estimate parameters for null coverage distribution
-	cat("Fitting coverage distribution\n")
+	cat("\nFitting coverage distribution\n")
 	covpar <- fitCoverage(coverage, lr, maxcov=maxcoverage, minalt=min_alt_cov)
-	if (is.na(covpar)) stop("Unable to fit coverage distribution")
+	if (is.na(covpar[1])) stop("Unable to fit coverage distribution")
 	
 	# print fitted coverage distribution params
 	covparams <- c(covpar[1], covpar[2], covpar[3], 2*covpar[2], covpar[4], covpar[5])
@@ -185,9 +184,9 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	print(covparams)
 	
 	# estimate parameters for LR distribution
-	cat("Fitting LR distribution\n")
+	cat("\nFitting LR distribution\n")
 	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[2], nullsd=covpar[3], tailcutoff=lrmax_quantile)
-	if (is.na(lrpar)) stop("Unable to fit LR distribution")
+	if (is.na(lrpar[1])) stop("Unable to fit LR distribution")
 	
 	# print fitted LR distribution params
 	lrparams <- c(lrpar[1], lrpar[2])
@@ -195,7 +194,7 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	print(lrparams)
 	
 	# calculate emission probabilities
-	cat("Calculating emission probabilities\n")
+	cat("\nCalculating emission probabilities\n")
 	
 	# calculate probabilites of the observed LR
 	lrmax <- 1
@@ -692,16 +691,16 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 	lambda[[3]] <- emit[[1]] # emission probability matrix
 	
 	# estimate hmm parameters with Baum-Welch
-	cat("estimating hmm parameters\n")
+	cat("\nestimating hmm parameters\n")
 	estparam <- c(1,2) # only estimate initial distribution and transition probabilities
 	lambda[estparam] <- hmmBaumWelch(obs=emit[[2]], steps=lr$V2, pi=lambda[[1]], p=lambda[[2]], b=lambda[[3]], maxiter=maxiter, pdifflimit=probdiff, est=estparam)[estparam]
 	
 	# perform decoding with Viterbi
-	cat("finding state sequence\n")
+	cat("\nfinding state sequence\n")
 	q <- hmmViterbi(pi=lambda[[1]], p=lambda[[2]], b=lambda[[3]], obs=emit[[2]], steps=lr$V2)
 	
 	# find coordinates of duplicated regions
-	cat("calculating regions\n")
+	cat("\ncalculating regions\n")
 	regions <- dupCoordinates(q=q, sites=lr[,1:2])
 	
 	return(list(regions[[1]], regions[[2]], lambda[[1]], lambda[[2]])) # return states and estimate of initial state distribution and transition matrix
