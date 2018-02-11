@@ -34,35 +34,35 @@ initializeP <- function() {
 	return(trans)
 }
 
-fitlr <- function (lr, coverage, nullmean, nullsd, tailcutoff = 1.0) {
+fitlr <- function (lr, tailcutoff = 1.0) {
 	# lr: likelihood ratios
-	# coverage: average individual coverage
-	# nullmean: estimate of average individual coverage for nonduplicated sites
-	# nullsd: estimate of the standard deviation for the average individual coverage for nonduplicated sites
 	# tailcutoff: fit alternative distribution to LRs under the 'tailcutoff' quantile (avoid influence of extreme values)
 	
-	# coverage value for which any coverage greater would have less than 0.95 probability of coming from null
-	# coverage used to avoid influencing fit by null sites with heterozygote advantage	
-	covprob <- 0.95
-	covlower <- qtruncnorm(covprob, mean=nullmean, sd=nullsd, a=0, b=Inf)
+	# check params
+	if (tailcutoff <= 0 || tailcutoff > 1) stop("LR quantile cutoff", tailcutoff, "outside of (0,1]")
 	
 	# truncate sites with extremeley high LR
 	truncidx <- which(lr < quantile(lr, tailcutoff))
 	sublr <- lr[truncidx]
-	subcov <- coverage[truncidx]
 	
 	# estimate proportion of LRs under the null
-	lrquantile <- 2.705 # 95% quantile for null LR distribution
-	pnull <- 1 - length(which(sublr > lrquantile))/length(sublr)
+	lrquantile <- 5.411894 # 99% quantile for null LR distribution
+	dupidx <- which(sublr > lrquantile)
+	
+	pnull <- 1.0 - length(dupidx)/length(sublr)
+	pmax <- 0.999999
+	pmin <- 1-pmax
+	if (pnull > pmax) pnull <- pmax
 	
 	# approximate mean of alternative LR values
-	ncpguess <- mean(sublr[which(subcov > covlower)])
+	ncpguess <- mean(sublr[dupidx])
+	ncpmax <- max(sublr)
 	
 	fit <- tryCatch(
-			optim(par=c(pnull, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(1e-6, 0), upper=c(0.999999, Inf), x=sublr)$par,
+			optim(par=c(pnull, ncpguess), fn=lrllh, method="L-BFGS-B", lower=c(pmin, 0), upper=c(pmax, ncpmax), x=sublr)$par,
 			error = function(err) {
 				cat(paste("LR DISTRIBUTION OPTIMIZATION FAILURE:\n", err, sep=''))
-				return(NA)
+				return(NULL)
 			})
 	
 	return(fit)
@@ -109,9 +109,11 @@ covllh <- function (par, x) {
 	-sum(log(llh))
 }
 
-fitCoverage <- function(coverage, lr, maxcov=NA, minalt=NA) {
+fitCoverage <- function(coverage, lr, maxcov=NULL, minalt=NULL) {
 	# truncate coverage
-	if (!is.na(maxcov)) {
+	if (!is.null(maxcov)) {
+		if (maxcov <= 0) stop("Maximum coverage has to be > zero")
+		if (!is.null(minalt) && minalt > maxcov) stop(paste("--dupcovmin", minalt, "greater than --maxcoverage", maxcov, "\n"))
 		keepidx <- which(coverage <= maxcov)
 		coverage <- coverage[keepidx]
 		lr <- lr[keepidx]
@@ -128,65 +130,72 @@ fitCoverage <- function(coverage, lr, maxcov=NA, minalt=NA) {
 	
 	nullavg <- mean(coverage[nondupidx])
 	nullsd <- sqrt(var(coverage[nondupidx]))
-	
-	# approximate proportion of nonduplicated sites
-	pnullcutoff <- 2.705
-	pnull <- length(which(lr <= pnullcutoff))/length(lr)
-	
-	# parameter bounds
 	null_mu_min <- min(coverage)
 	null_mu_max <- 3*nullavg
+	if (!is.null(maxcov) && null_mu_max > maxcov) null_mean_max <- 0.5 * max(coverage)
 	
-	alt_max <- 2*null_mu_max
-	if (!is.na(maxcov) && alt_max > maxcov) cat(paste("WARNING: Max duplicated mean coverage of", alt_max, "exceeds --maximumcoverage", maxcov, "\n"))
-
-	alt_min <- minalt
-	if (is.na(alt_min)) alt_min <- ifelse(nullavg > nullsd, nullavg-nullsd, nullavg)
+	alt_max <- 2*null_mu_max # maximum value for alternative truncated normal lower bound	
+	alt_min <- minalt # minimum value for alternative truncated normal lower bound
+	if (is.null(alt_min)) alt_min <- ifelse(nullavg >= nullsd, nullavg-nullsd, nullavg)
 	if (alt_min > alt_max) {
-			cat("duplicated coverage distribution minimum is set greater than the max\n")
-			return(NA)
+		cat(paste("--dupcovmin", minalt, "is greater than", alt_max, "(maximum value for duplicated distribution lower bound)\n"))
+		return(NULL)
 	}
 	
+	# approximate proportion of nonduplicated sites
+	pnullcutoff <- 5.411894 # 99% quantile for null LR distribution
+	pnull <- length(which(lr < pnullcutoff))/length(lr)
+	pmax <- 0.999999
+	pmin <- 1 - pmax
+	if (pnull > pmax) pnull <- pmax
+
 	# set starting point for optimization
-	parguess <- c(pnull, nullavg, nullsd, 2*nullsd, nullavg+nullsd)
+	
+	altsd <- 2*nullsd
+	alt_lowbound <- nullavg + (2*nullsd)
+	
+	if (!is.null(maxcov)) {
+		if (alt_max > maxcov) cat(paste("WARNING: Upper bound for duplicated mean coverage of", alt_max, "exceeds --maxcoverage", maxcov, "\n"))
+		if (alt_lowbound > maxcov) cat(paste("WARNING: Duplicated coverage lower bound guess of", alt_lowbound, "exceeds --maxcoverage", maxcov, "\n"))
+	}
 	
 	# find MLE parameter values
 	fit <- tryCatch( 
-			optim(par=parguess, fn=covllh, method="L-BFGS-B", lower=c(1e-6, null_mu_min, 1e-12, 1e-12, alt_min), upper=c(0.999999, null_mu_max, Inf, Inf, alt_max), x=coverage)$par,
+			optim(par=c(pnull, nullavg, nullsd, altsd, alt_lowbound), fn=covllh, method="L-BFGS-B", 
+					lower=c(pmin, null_mu_min, 1e-12, 1e-12, alt_min), upper=c(pmax, null_mu_max, Inf, Inf, alt_max), x=coverage)$par,
 			error = function(err) {
 				print(paste("COVERAGE DISTRIBUTION OPTIMIZATION FAILURE:", err, sep=''))
-				return(NA)
+				return(NULL)
 			})
 	
 	return(fit)
 }
 
-initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, min_alt_cov=NA) {
+initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, maxcoverage=NULL, min_alt_cov=NULL) {
 	# initialize emission probabilites
 	
 	# lr: vector of duplicaiton likelihood ratios
 	# coverage: vector of average individual coverage
 	
-	lrseq <- seq(from=2, to=max(ceiling(lr)), by=1)
-	covseq <- seq(from=2, to=max(ceiling(coverage)), by=1)
-	
-	lrprob <- matrix(NA, nrow=2, ncol=length(lrseq)+1)
-	covprob <- matrix(NA, nrow=2, ncol=length(covseq)+1)
+	# check function params
+	if (! emittype %in% c(0,1)) stop(paste("Invalid emission type", x))
 	
 	# estimate parameters for null coverage distribution
-	cat("\nFitting coverage distribution\n")
-	covpar <- fitCoverage(coverage, lr, maxcov=maxcoverage, minalt=min_alt_cov)
-	if (is.na(covpar[1])) stop("Unable to fit coverage distribution")
+	if (emittype == 1) {
+		cat("\nFitting coverage distribution\n")
+		covpar <- fitCoverage(coverage=coverage, lr=lr, maxcov=maxcoverage, minalt=min_alt_cov)
+		if (is.null(covpar[1])) stop("Unable to fit coverage distribution")
 	
-	# print fitted coverage distribution params
-	covparams <- c(covpar[1], covpar[2], covpar[3], 2*covpar[2], covpar[4], covpar[5])
-	names(covparams) <- c("ndProb", "ndMean", "ndSD", "dupMean", "dupSD", "dupMin")
-	print(covparams)
+		# print fitted coverage distribution params
+		covparams <- c(covpar[1], covpar[2], covpar[3], 2*covpar[2], covpar[4], covpar[5])
+		names(covparams) <- c("ndProb", "ndMean", "ndSD", "dupMean", "dupSD", "dupMin")
+		print(covparams)
+	}
 	
 	# estimate parameters for LR distribution
 	cat("\nFitting LR distribution\n")
-	lrpar <- fitlr(lr=lr, coverage=coverage, nullmean=covpar[2], nullsd=covpar[3], tailcutoff=lrmax_quantile)
-	if (is.na(lrpar[1])) stop("Unable to fit LR distribution")
+	lrpar <- fitlr(lr=lr, tailcutoff=lrmax_quantile)
+	if (is.null(lrpar)) stop("Unable to fit LR distribution")
 	
 	# print fitted LR distribution params
 	lrparams <- c(lrpar[1], lrpar[2])
@@ -197,6 +206,9 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	cat("\nCalculating emission probabilities\n")
 	
 	# calculate probabilites of the observed LR
+	lrseq <- seq(from=2, to=max(ceiling(lr)), by=1)
+	lrprob <- matrix(NA, nrow=2, ncol=length(lrseq)+1)
+	
 	lrmax <- 1
 	seenalt <- 0
 	lrprob[1,1] <- 0.5 + 0.5*pchisq(1,1)
@@ -216,31 +228,46 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	}
 	
 	# calculate probabilities of the observed coverage
+	covprob <- NULL
+
 	covmax <- 1
-	seenalt <- 0
-	alt_cov_mu <- 2*covpar[2] # assume duplicated sites have twice the average coverage as nonduplicated sites
-	covprob[1,1] <- ptruncnorm(1, mean=covpar[2], sd=covpar[3], a=0, b=Inf) # null
-	covprob[2,1] <- ptruncnorm(1, mean=alt_cov_mu, sd=covpar[4], a=covpar[5], b=Inf) #alternative
-	nullsum <- covprob[1,1]
-	altsum <- covprob[2,1]
+	if (emittype == 1) {
+		covseq <- seq(from=2, to=max(ceiling(coverage)), by=1)
+		covprob <- matrix(NA, nrow=2, ncol=length(covseq)+1)
+		
+		seenalt <- 0
+		alt_cov_mu <- 2*covpar[2] # assume duplicated sites have twice the average coverage as nonduplicated sites
+		covprob[1,1] <- ptruncnorm(1, mean=covpar[2], sd=covpar[3], a=0, b=Inf) # null
+		covprob[2,1] <- ptruncnorm(1, mean=alt_cov_mu, sd=covpar[4], a=covpar[5], b=Inf) #alternative
+		nullsum <- covprob[1,1]
+		altsum <- covprob[2,1]
 	
-	for (i in covseq) {
-		covprob[1,i] <- ptruncnorm(i, mean=covpar[2], sd=covpar[3], a=0, b=Inf) - nullsum # null
-		covprob[2,i] <- ptruncnorm(i, mean=alt_cov_mu, sd=covpar[4], a=covpar[5], b=Inf) - altsum # alternate
-		nullsum <- nullsum + covprob[1,i]
-		altsum <- altsum + covprob[2,i]
-		if (seenalt == 0 && covprob[2,i] > 0) seenalt <- 1 # check if alternative distribution has been entered
-		if (covprob[1,i] == 0 && covprob[2,i] == 0 && seenalt == 1) break
-		covmax <- covmax + 1
+		for (i in covseq) {
+			covprob[1,i] <- ptruncnorm(i, mean=covpar[2], sd=covpar[3], a=0, b=Inf) - nullsum # null
+			covprob[2,i] <- ptruncnorm(i, mean=alt_cov_mu, sd=covpar[4], a=covpar[5], b=Inf) - altsum # alternate
+			nullsum <- nullsum + covprob[1,i]
+			altsum <- altsum + covprob[2,i]
+			if (seenalt == 0 && covprob[2,i] > 0) seenalt <- 1 # check if alternative distribution has been entered
+			if (covprob[1,i] == 0 && covprob[2,i] == 0 && seenalt == 1) break
+			covmax <- covmax + 1
+		}
 	}
 	
-	# calculate joint probabilities of LR and coverage
+	# calculate emission probabilities
 	b <- list(matrix(NA, nrow=lrmax, ncol=covmax), matrix(NA, nrow=lrmax, ncol=covmax))
-	for (i in 1:lrmax) {
-		for (j in 1:covmax) {
-			b[[1]][i,j] <- lrprob[1,i] * covprob[1,j] # null
-			b[[2]][i,j] <- lrprob[2,i] * covprob[2,j] # alternative
+	
+	if (emittype == 1) {
+		# calculate joint probabilities of LR and coverage
+		for (i in 1:lrmax) {
+			for (j in 1:covmax) {
+				b[[1]][i,j] <- lrprob[1,i] * covprob[1,j] # null
+				b[[2]][i,j] <- lrprob[2,i] * covprob[2,j] # alternative
+			}
 		}
+	} else {
+		# only use LR probabilities
+		b[[1]][,1] <- lrprob[1,1:lrmax] # null
+		b[[2]][,1] <- lrprob[2,1:lrmax] # alternative
 	}
 	
 	# assign uniform emission probability to cases with zero probability under both the null and alternative
@@ -256,7 +283,7 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	b[[2]] <- b[[2]]/sum(b[[2]]) # alternative emissions must sum to 1
 	
 	if (min(c(min(b[[1]][which(b[[1]]>0)]), min(b[[2]][which(b[[2]]>0)]))) < .Machine$double.xmin) {
-		cat("Smallest nonzero emission probability less than machine precision - consider decreasing lrquantile\n")
+		cat("WARNING: Smallest nonzero emission probability less than machine precision - consider decreasing LR quantile\n")
 	}
 	
 	# bound the maximum LR and coverage values
@@ -264,9 +291,11 @@ initializeEmissions <- function(lr, coverage, lrmax_quantile, maxcoverage=NA, mi
 	lr <- ceiling(lr)
 	lr <- replace(lr, lr > lrmax, lrmax)
 	
-	coverage[coverage==0] <- 0.1
-	coverage <- ceiling(coverage)
-	coverage <- replace(coverage, coverage > covmax, covmax)
+	if (emittype == 1) {
+		coverage[coverage==0] <- 0.1
+		coverage <- ceiling(coverage)
+		coverage <- replace(coverage, coverage > covmax, covmax)
+	} else coverage <- rep(1,length(lr))
 	
 	return(list(b, list(lr, coverage)))
 }
@@ -423,6 +452,9 @@ hmmEstParam <- function(gamma, psi, estimate=c(1,2,3), obs=NA) {
 	# psi: P(x_t) = i at each step t
 	# estimate: what parameters to restimate, 1=>pi, 2=>transition probabilities, 3=>emission probabilities
 	# obs: vector of potential observations
+	
+	# check input parameters
+	if (! all(estimate %in% c(1,2,3))) stop("HMM parameters to estimate not in (1) initial distribution, (2) transition matrix, (3) emission matrix")
 
 	nstates <- ncol(psi)
 	T <- nrow(psi)
@@ -506,6 +538,10 @@ hmmBaumWelch <- function(obs, steps, pi, p, b, maxiter=100, pdifflimit=1e-4, est
 	# maxiter: maximum number of EM iterations
 	# logdiff: minimum difference in the log likelihoods
 	# parameters to estimate: 1=>inititial distribution, 2=>transition matrix, 3=>emission probs
+	
+	# check input parameters
+	if (maxiter < 1) stop("Max number of EM algorithm iterations set to < 1")
+	if (pdifflimit < 0) stop("EM algorithm difference in log probility set to < 0")
 	
 	lambda <- list(pi, p, b)
 	oldlogPX <- 0
@@ -671,23 +707,24 @@ dupCoordinates <- function (q, sites) {
 	return(list(regions, states))
 }
 
-mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NA, altcovmin=NA) {
+mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NULL, altcovmin=NULL) {
 	# main function for duplication HMM
-	 
+
 	# lr: ngsParalog calcLR likelihood ratios output
 	# coverage: vector of average individual coverage for each site in lr
+	# emissiontype: use (0) only LR or (2) LR and coverage as emissions
 	# maxiter: maximum number of iterations for Baum-Welch EM
 	# probdiff: minimum difference in log likelihoods between iterations of Baum-Welch EM
 	# lrquantile: ignore LR values above 'lrquantile' when fitting alternative LR distribution (avoid influencce of many very extreme values)
 	# maxcoverage: maximum coverage when fitting coverage distribution
 	# altcovmin: lower bound for duplicated sites truncated normal coverage distribution
-
+	
 	# initialize model parameter guesses for Baum-Welch estimation
 	
 	lambda <- list(NA, NA, NA)
 	lambda[[1]] <- initializePi() # initial distribution vector
 	lambda[[2]] <- initializeP() # transitition probability matrix
-	emit <- initializeEmissions(lr=lr$V5, coverage=coverage, lrmax_quantile=lrquantile, maxcoverage=maxcoverage, min_alt_cov=altcovmin) # returns [emission matrix, [lr, coverage]]
+	emit <- initializeEmissions(lr=lr$V5, coverage=coverage, emittype=emissiontype, lrmax_quantile=lrquantile, maxcoverage=maxcoverage, min_alt_cov=altcovmin) # returns [emission matrix, [lr, coverage]]
 	lambda[[3]] <- emit[[1]] # emission probability matrix
 	
 	# estimate hmm parameters with Baum-Welch
@@ -706,9 +743,54 @@ mainDupHmm <- function (lr, coverage, maxiter=100, probdiff=1e-4, lrquantile=1.0
 	return(list(regions[[1]], regions[[2]], lambda[[1]], lambda[[2]])) # return states and estimate of initial state distribution and transition matrix
 }
 
+parseInput <- function(input) {
+	# parse parameters
+	emission_type <- as.numeric(input$emit)
+	if (! emission_type %in% c(0,1)) stop(paste("--emit", emission_type, "invalid. Must be 0 (LR only) or 1 (LR and coverage)"))
+	
+	em_max_iter <- as.numeric(input$maxiter)
+	if (em_max_iter < 1) stop("--maxiter must be >= 1")
+	
+	pdiff <- as.numeric(input$probdiff)
+	if (pdiff <= 0) stop("--probdiff must be > 0")
+	
+	lrcutoff <- as.numeric(input$lrquantile)
+	if (lrcutoff <= 0 || lrcutoff > 1) stop("--lrquantile out of range (0,1]")
+	
+	maxcov <- NULL
+	if (! is.null(input$maxcoverage)) {
+		maxcov <- as.numeric(input$maxcoverage)
+		if (maxcov <= 0) stop("--maxcoverage must be > 0")
+	}
+		
+	alt_cov_lb <- NULL
+	if (! is.null(input$dupcovmin)) {
+		alt_cov_lb <- as.numeric(input$dupcovmin)
+		if (alt_cov_lb < 0) stop("--dupcovmin must be >= 0")
+	}
+	
+	if (!is.null(maxcov) && !is.null(alt_cov_lb) && alt_cov_lb > maxcov) stop("--dupcovmin must be <= --maxcoverage")
+	
+	# open file connections
+	lrf <- read.table(input$lrfile)
+	cov <- NULL
+	if (!is.null(input$covfile)) {
+		cov <- read.table(input$covfile)$V3
+		if (nrow(lrf) != length(cov)) stop("Number of sites in likelihood ratio and coverage files differ")
+	}
+	
+	rf_name <- paste(input$outfile, ".rf", sep='')
+	sf_name <- paste(input$outfile, ".states", sep='')
+	
+	rf_out <- file(rf_name, "w")
+	sf_out <- file(sf_name, "w")
+	
+	return(list(lrf, cov, rf_out, sf_out, emission_type, em_max_iter, pdiff, lrcutoff, maxcov, alt_cov_lb))
+}
+
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.2.0',"\n") # version 2/6/2018
+v <- paste('dupHMM.R 0.3.0',"\n") # version 2/11/2018
 
 # parse arguments
 
@@ -717,11 +799,13 @@ Description:
 Infer regions of duplication from ngsParalog likelihood ratios and sequencing depth
 		
 Usage:
-   dupHMM.R --lrfile=<likelihood ratio file> --covfile=<coverage file> --outfile=<output prefix> [options]
+   dupHMM.R --lrfile=<likelihood ratio file> --outfile=<output prefix> [options]
    dupHMM.R -h | --help
    dupHMM.R --version
 		
 Options:
+   --emit=<0|1>           Use (0) only LRs or (1) LRs and coverage as emissions [default: 1]            
+   --covfile=<file>       File with the average individual coverage for all sites in the LR file
    --maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
    --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
    --lrquantile=<float>   Ignore LRs above this quantile when fitting alternative LR distribution [default: 1.0]
@@ -731,42 +815,20 @@ Options:
 
 opts <- docopt(doc, version=v)
 
-# set and check options
-em_max_iter <- as.numeric(opts$maxiter)
-if (em_max_iter < 1) stop("maxiter must be > 1")
-
-pdiff <- as.numeric(opts$probdiff)
-if (pdiff <= 0) stop("probdiff must be > 0")
-
-lrcutoff <- as.numeric(opts$lrquantile)
-if (lrcutoff <= 0 || lrcutoff > 1) stop("lrquantile must be in range (0,1]")
-
-maxcov <- NA
-if (!is.null(opts$maxcoverage)) maxcov <- as.numeric(opts$maxcoverage)
-
-alt_cov_lb <- NA
-if (!is.null(opts$dupcovmin)) alt_cov_lb <- as.numeric(opts$dupcovmin)
-
-# open file connections
-lrf <- read.table(opts$lrfile)
-cov <- read.table(opts$covfile)$V3
-if (nrow(lrf) != length(cov)) stop("likelihood ratio and coverage vector lengths differ")
-
-rf_name <- paste(opts$outfile, ".rf", sep='')
-sf_name <- paste(opts$outfile, ".states", sep='')
-
-rf_out <- file(rf_name, "w")
-sf_out <- file(sf_name, "w")
+# parse input
+userin <- parseInput(opts)
 
 # run the hmm
-result <- mainDupHmm(lr=lrf, coverage=cov, maxiter=em_max_iter, probdiff=pdiff, lrquantile=lrcutoff, maxcoverage=maxcov, altcovmin=alt_cov_lb)
+result <- mainDupHmm(lr=userin[[1]], coverage=userin[[2]], emissiontype=userin[[5]], maxiter=userin[[6]], probdiff=userin[[7]], lrquantile=userin[[8]], maxcoverage=userin[[9]], altcovmin=userin[[10]])
+#result <- mainDupHmm(lr=lrf, coverage=cov, maxiter=em_max_iter, probdiff=pdiff, lrquantile=lrcutoff, maxcoverage=maxcov, altcovmin=alt_cov_lb)
 
 # output results
 cat("Writing results\n")
-write.table(result[[1]], file=rf_out, row.names=FALSE, col.names=FALSE, quote=FALSE, sep='\t')
-write.table(result[[2]], file=sf_out, row.names=FALSE, col.names=TRUE, quote=FALSE, sep='\t')
+write.table(result[[1]], file=userin[[3]], row.names=FALSE, col.names=FALSE, quote=FALSE, sep='\t')
+write.table(result[[2]], file=userin[[4]], row.names=FALSE, col.names=TRUE, quote=FALSE, sep='\t')
 
-close(rf_out)
-close(sf_out)
+# close outputs
+close(userin[[3]])
+close(userin[[4]])
 
 cat("Finished\n")
