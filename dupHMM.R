@@ -799,11 +799,11 @@ parseInput <- function(input) {
 	}
 	
 	lrpenalty <- NULL
-	if (lr %in% c('none', 'NONE')) {
+	if (input$penalty %in% c('none', 'NONE')) {
 		lrpenalty <- NULL
-	} else if (lr %in% c('aic', 'AIC')) {
+	} else if (input$penalty %in% c('aic', 'AIC')) {
 		lrpenalty <- 'aic'
-	} else if (lr %in% c('bic', 'BIC')) {
+	} else if (input$penalty %in% c('bic', 'BIC')) {
 		lrpenalty <- 'bic'
 		if (is.null(input$n)) stop("Use of BIC requires that the diploid sample size be provided with --n")
 	} else stop(paste("--penalty", input$penalty, "invalid: Must be aic, bic, or none"))
