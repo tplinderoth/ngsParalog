@@ -171,20 +171,39 @@ fitCoverage <- function(coverage, lr, maxcov=NULL, minalt=NULL) {
 	return(fit)
 }
 
-initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, maxcoverage=NULL, min_alt_cov=NULL) {
+initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, maxcoverage=NULL, min_alt_cov=NULL, penalty='aic', sampn=NULL) {
 	# initialize emission probabilites
 	
 	# lr: vector of duplicaiton likelihood ratios
 	# coverage: vector of average individual coverage
+	# emittype: use (0) LR only or (1) LR and coverage as emissions for hmm
+	# lrmax_quantile: ignore LRs above this quantile
+	# maxcoverage: maximum coverage
+	# min_alt_coverage: lower bound for truncated normal minimum parameter of alternative coverage distribution
+	# penalty: type of penalized likelihood ratio to use
+	# sampn: sample size (number of diploid individuals)
 	
 	# check function params
 	if (! emittype %in% c(0,1)) stop(paste("Invalid emission type", x))
 	
+	# use penalized likelihood
+	if (! is.null(penalty)) {
+		if (penalty %in% c('aic', 'AIC')) {
+			lr <- lr - 2
+		} else if (penalty %in% c('bic', 'BIC')) {
+			if (is.null(sampn)) stop("Use of BIC penalized likelihood ratio requires sample size")
+			adjust <- 2*log(sampn)
+			lr <- lr - adjust
+		} else stop(paste(penalty, "is an invalid likelihood penalization"))
+		lr[lr < 0] <- 0
+	}
+	
 	# estimate parameters for null coverage distribution
+	covpar <- NULL
 	if (emittype == 1) {
 		cat("\nFitting coverage distribution\n")
 		covpar <- fitCoverage(coverage=coverage, lr=lr, maxcov=maxcoverage, minalt=min_alt_cov)
-		if (is.null(covpar[1])) stop("Unable to fit coverage distribution")
+		if (is.null(covpar)) stop("Unable to fit coverage distribution")
 	
 		# print fitted coverage distribution params
 		covparams <- c(covpar[1], covpar[2], covpar[3], 2*covpar[2], covpar[4], covpar[5])
@@ -287,12 +306,12 @@ initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, max
 	}
 	
 	# bound the maximum LR and coverage values
-	lr[lr==0] <- 0.1
+	lr[lr==0] <- 1
 	lr <- ceiling(lr)
 	lr <- replace(lr, lr > lrmax, lrmax)
 	
 	if (emittype == 1) {
-		coverage[coverage==0] <- 0.1
+		coverage[coverage==0] <- 1
 		coverage <- ceiling(coverage)
 		coverage <- replace(coverage, coverage > covmax, covmax)
 	} else coverage <- rep(1,length(lr))
@@ -707,7 +726,7 @@ dupCoordinates <- function (q, sites) {
 	return(list(regions, states))
 }
 
-mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NULL, altcovmin=NULL) {
+mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NULL, altcovmin=NULL, lrpenalty='aic', sampsize=NULL) {
 	# main function for duplication HMM
 
 	# lr: ngsParalog calcLR likelihood ratios output
@@ -718,13 +737,15 @@ mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1
 	# lrquantile: ignore LR values above 'lrquantile' when fitting alternative LR distribution (avoid influencce of many very extreme values)
 	# maxcoverage: maximum coverage when fitting coverage distribution
 	# altcovmin: lower bound for duplicated sites truncated normal coverage distribution
+	# lrpenalty: type of penalty to apply to the likelihood ratio
+	# sampsize: sample size (number of diploid individuals)
 	
 	# initialize model parameter guesses for Baum-Welch estimation
 	
 	lambda <- list(NA, NA, NA)
 	lambda[[1]] <- initializePi() # initial distribution vector
 	lambda[[2]] <- initializeP() # transitition probability matrix
-	emit <- initializeEmissions(lr=lr$V5, coverage=coverage, emittype=emissiontype, lrmax_quantile=lrquantile, maxcoverage=maxcoverage, min_alt_cov=altcovmin) # returns [emission matrix, [lr, coverage]]
+	emit <- initializeEmissions(lr=lr$V5, coverage=coverage, emittype=emissiontype, lrmax_quantile=lrquantile, maxcoverage=maxcoverage, min_alt_cov=altcovmin, penalty=lrpenalty, sampn=sampsize)
 	lambda[[3]] <- emit[[1]] # emission probability matrix
 	
 	# estimate hmm parameters with Baum-Welch
@@ -770,6 +791,22 @@ parseInput <- function(input) {
 	}
 	
 	if (!is.null(maxcov) && !is.null(alt_cov_lb) && alt_cov_lb > maxcov) stop("--dupcovmin must be <= --maxcoverage")
+
+	samplesz <- NULL
+	if (! is.null(input$n)) {
+		samplesz <- ceiling(as.numeric(input$n))
+		if (samplesz < 1) stop("--n must specify a sample size >= 1")
+	}
+	
+	lrpenalty <- NULL
+	if (lr %in% c('none', 'NONE')) {
+		lrpenalty <- NULL
+	} else if (lr %in% c('aic', 'AIC')) {
+		lrpenalty <- 'aic'
+	} else if (lr %in% c('bic', 'BIC')) {
+		lrpenalty <- 'bic'
+		if (is.null(input$n)) stop("Use of BIC requires that the diploid sample size be provided with --n")
+	} else stop(paste("--penalty", input$penalty, "invalid: Must be aic, bic, or none"))
 	
 	# open file connections
 	lrf <- read.table(input$lrfile)
@@ -785,12 +822,12 @@ parseInput <- function(input) {
 	rf_out <- file(rf_name, "w")
 	sf_out <- file(sf_name, "w")
 	
-	return(list(lrf, cov, rf_out, sf_out, emission_type, em_max_iter, pdiff, lrcutoff, maxcov, alt_cov_lb))
+	return(list(lrf, cov, rf_out, sf_out, emission_type, em_max_iter, pdiff, lrcutoff, maxcov, alt_cov_lb, lrpenalty, samplesz))
 }
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.3.0',"\n") # version 2/11/2018
+v <- paste('dupHMM.R 0.4.0',"\n") # version 2/16/2018
 
 # parse arguments
 
@@ -806,6 +843,8 @@ Usage:
 Options:
    --emit=<0|1>           Use (0) only LRs or (1) LRs and coverage as emissions [default: 1]            
    --covfile=<file>       File with the average individual coverage for all sites in the LR file
+   --penalty=<character>  Penalize likelihood ratios using AIC, BIC, or none for no penalty [default: aic]
+   --n=<int>              Diploid sample size (required for BIC)
    --maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
    --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
    --lrquantile=<float>   Ignore LRs above this quantile when fitting alternative LR distribution [default: 1.0]
@@ -819,7 +858,8 @@ opts <- docopt(doc, version=v)
 userin <- parseInput(opts)
 
 # run the hmm
-result <- mainDupHmm(lr=userin[[1]], coverage=userin[[2]], emissiontype=userin[[5]], maxiter=userin[[6]], probdiff=userin[[7]], lrquantile=userin[[8]], maxcoverage=userin[[9]], altcovmin=userin[[10]])
+result <- mainDupHmm(lr=userin[[1]], coverage=userin[[2]], emissiontype=userin[[5]], maxiter=userin[[6]], probdiff=userin[[7]], lrquantile=userin[[8]], 
+		maxcoverage=userin[[9]], altcovmin=userin[[10]], lrpenalty=userin[[11]], sampsize=userin[[12]])
 #result <- mainDupHmm(lr=lrf, coverage=cov, maxiter=em_max_iter, probdiff=pdiff, lrquantile=lrcutoff, maxcoverage=maxcov, altcovmin=alt_cov_lb)
 
 # output results
