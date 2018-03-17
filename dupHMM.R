@@ -48,6 +48,7 @@ fitlr <- function (lr, tailcutoff = 1.0) {
 	# estimate proportion of LRs under the null
 	lrquantile <- 5.411894 # 99% quantile for null LR distribution
 	dupidx <- which(sublr > lrquantile)
+	if (length(dupidx) == 0) dupidx <- which(sublr > 0)
 	
 	pnull <- 1.0 - length(dupidx)/length(sublr)
 	pmax <- 0.999999
@@ -827,7 +828,7 @@ parseInput <- function(input) {
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.4.0',"\n") # version 2/16/2018
+v <- paste('dupHMM.R 0.4.1',"\n") # version 3/17/2018
 
 # parse arguments
 
