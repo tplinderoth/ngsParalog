@@ -156,7 +156,7 @@ fitCoverage <- function(coverage, lr, maxcov=NULL, alt_min=0) {
 	# set starting point for optimization
 	
 	altsd <- 2*nullsd
-	alt_lowbound <- nullavg
+	alt_lowbound <- 0
 	
 	if (!is.null(maxcov)) {
 		if (alt_max > maxcov) cat(paste("WARNING: Upper bound for duplicated mean coverage of", alt_max, "exceeds --maxcoverage", maxcov, "\n"))
