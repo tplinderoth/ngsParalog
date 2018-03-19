@@ -110,11 +110,16 @@ covllh <- function (par, x) {
 	-sum(log(llh))
 }
 
-fitCoverage <- function(coverage, lr, maxcov=NULL, minalt=NULL) {
+fitCoverage <- function(coverage, lr, maxcov=NULL, alt_min=0) {
+	# coverage: vector of average individual coverage for each site
+	# lr: duplication likelihood ratios
+	# maxcov: truncate coverage above maxcov when fitting distribution
+	# alt_min: truncated normal duplicated coverage distribution lower bound
+	
 	# truncate coverage
 	if (!is.null(maxcov)) {
 		if (maxcov <= 0) stop("Maximum coverage has to be > zero")
-		if (!is.null(minalt) && minalt > maxcov) stop(paste("--dupcovmin", minalt, "greater than --maxcoverage", maxcov, "\n"))
+		if (alt_min > maxcov) stop(paste("--dupcovmin", alt_min, "greater than --maxcoverage", maxcov, "\n"))
 		keepidx <- which(coverage <= maxcov)
 		coverage <- coverage[keepidx]
 		lr <- lr[keepidx]
@@ -136,10 +141,8 @@ fitCoverage <- function(coverage, lr, maxcov=NULL, minalt=NULL) {
 	if (!is.null(maxcov) && null_mu_max > maxcov) null_mean_max <- 0.5 * max(coverage)
 	
 	alt_max <- 2*null_mu_max # maximum value for alternative truncated normal lower bound	
-	alt_min <- minalt # minimum value for alternative truncated normal lower bound
-	if (is.null(alt_min)) alt_min <- ifelse(nullavg >= nullsd, nullavg-nullsd, nullavg)
 	if (alt_min > alt_max) {
-		cat(paste("--dupcovmin", minalt, "is greater than", alt_max, "(maximum value for duplicated distribution lower bound)\n"))
+		cat(paste("--dupcovmin", alt_min, "is greater than", alt_max, "(maximum value for duplicated distribution lower bound)\n"))
 		return(NULL)
 	}
 	
@@ -153,7 +156,7 @@ fitCoverage <- function(coverage, lr, maxcov=NULL, minalt=NULL) {
 	# set starting point for optimization
 	
 	altsd <- 2*nullsd
-	alt_lowbound <- nullavg + (2*nullsd)
+	alt_lowbound <- nullavg
 	
 	if (!is.null(maxcov)) {
 		if (alt_max > maxcov) cat(paste("WARNING: Upper bound for duplicated mean coverage of", alt_max, "exceeds --maxcoverage", maxcov, "\n"))
@@ -172,7 +175,7 @@ fitCoverage <- function(coverage, lr, maxcov=NULL, minalt=NULL) {
 	return(fit)
 }
 
-initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, maxcoverage=NULL, min_alt_cov=NULL, penalty='aic', sampn=NULL) {
+initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, maxcoverage=NULL, min_alt_cov=0, penalty='aic', sampn=NULL) {
 	# initialize emission probabilites
 	
 	# lr: vector of duplicaiton likelihood ratios
@@ -203,7 +206,7 @@ initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, max
 	covpar <- NULL
 	if (emittype == 1) {
 		cat("\nFitting coverage distribution\n")
-		covpar <- fitCoverage(coverage=coverage, lr=lr, maxcov=maxcoverage, minalt=min_alt_cov)
+		covpar <- fitCoverage(coverage=coverage, lr=lr, maxcov=maxcoverage, alt_min=min_alt_cov)
 		if (is.null(covpar)) stop("Unable to fit coverage distribution")
 	
 		# print fitted coverage distribution params
@@ -727,7 +730,7 @@ dupCoordinates <- function (q, sites) {
 	return(list(regions, states))
 }
 
-mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NULL, altcovmin=NULL, lrpenalty='aic', sampsize=NULL) {
+mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NULL, altcovmin=0, lrpenalty='aic', sampsize=NULL) {
 	# main function for duplication HMM
 
 	# lr: ngsParalog calcLR likelihood ratios output
@@ -785,11 +788,8 @@ parseInput <- function(input) {
 		if (maxcov <= 0) stop("--maxcoverage must be > 0")
 	}
 		
-	alt_cov_lb <- NULL
-	if (! is.null(input$dupcovmin)) {
-		alt_cov_lb <- as.numeric(input$dupcovmin)
-		if (alt_cov_lb < 0) stop("--dupcovmin must be >= 0")
-	}
+	alt_cov_lb <- as.numeric(input$dupcovmin)
+	if (alt_cov_lb < 0) stop("--dupcovmin must be >= 0")
 	
 	if (!is.null(maxcov) && !is.null(alt_cov_lb) && alt_cov_lb > maxcov) stop("--dupcovmin must be <= --maxcoverage")
 
@@ -828,7 +828,7 @@ parseInput <- function(input) {
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.4.1',"\n") # version 3/17/2018
+v <- paste('dupHMM.R 0.4.1',"\n") # version 3/18/2018
 
 # parse arguments
 
@@ -850,7 +850,7 @@ Options:
    --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
    --lrquantile=<float>   Ignore LRs above this quantile when fitting alternative LR distribution [default: 1.0]
    --maxcoverage=<float>  Maximum coverage for fitting coverage distribution
-   --dupcovmin=<float>    Lower bound for duplicated coverage distribution
+   --dupcovmin=<float>    Lower bound for duplicated coverage distribution [default: 0]
 ' -> doc
 
 opts <- docopt(doc, version=v)
