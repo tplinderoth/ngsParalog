@@ -156,7 +156,7 @@ fitCoverage <- function(coverage, lr, maxcov=NULL, alt_min=0) {
 	# set starting point for optimization
 	
 	altsd <- 2*nullsd
-	alt_lowbound <- 0
+	alt_lowbound <- alt_min
 	
 	if (!is.null(maxcov)) {
 		if (alt_max > maxcov) cat(paste("WARNING: Upper bound for duplicated mean coverage of", alt_max, "exceeds --maxcoverage", maxcov, "\n"))
@@ -828,7 +828,7 @@ parseInput <- function(input) {
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.4.1',"\n") # version 3/18/2018
+v <- paste('dupHMM.R 0.4.2',"\n") # version 3/20/2018
 
 # parse arguments
 
