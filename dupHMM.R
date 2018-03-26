@@ -196,7 +196,7 @@ initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, max
 			lr <- lr - 2
 		} else if (penalty %in% c('bic', 'BIC')) {
 			if (is.null(sampn)) stop("Use of BIC penalized likelihood ratio requires sample size")
-			adjust <- 2*log(sampn)
+			adjust <- log(sampn)
 			lr <- lr - adjust
 		} else stop(paste(penalty, "is an invalid likelihood penalization"))
 		lr[lr < 0] <- 0
@@ -828,7 +828,7 @@ parseInput <- function(input) {
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.4.2',"\n") # version 3/20/2018
+v <- paste('dupHMM.R 0.4.3',"\n") # version 3/26/2018
 
 # parse arguments
 
@@ -844,7 +844,7 @@ Usage:
 Options:
    --emit=<0|1>           Use (0) only LRs or (1) LRs and coverage as emissions [default: 1]            
    --covfile=<file>       File with the average individual coverage for all sites in the LR file
-   --penalty=<character>  Penalize likelihood ratios using AIC, BIC, or none for no penalty [default: aic]
+   --penalty=<character>  Penalize likelihood ratios using AIC, BIC, or none for no penalty [default: none]
    --n=<int>              Diploid sample size (required for BIC)
    --maxiter=<int>        Maximum number of Baum-Welch iterations [default: 100]
    --probdiff=<float>     Minimum difference in log likelihood between Baum-Welch iterations [default: 1e-4]
