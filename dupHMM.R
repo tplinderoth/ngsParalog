@@ -175,8 +175,25 @@ fitCoverage <- function(coverage, lr, maxcov=NULL, alt_min=0) {
 	return(fit)
 }
 
-initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, maxcoverage=NULL, min_alt_cov=0, penalty='aic', sampn=NULL) {
-	# initialize emission probabilites
+penalizeLR <- function(lr, penalty, sampn=NULL) {
+	# lr: vector of duplication likelihood ratios
+	# penalty: type of penalized likelihood ratios to use
+	# sampn: sample size (number of diploid individuals)
+	
+	if (penalty %in% c('aic', 'AIC')) {
+		lr <- lr - 2
+	} else if (penalty %in% c('bic', 'BIC')) {
+		if (is.null(sampn)) stop("Use of BIC penalized likelihood ratio requires sample size")
+		adjust <- log(sampn)
+		lr <- lr - adjust
+	} else stop(paste(penalty, "is an invalid likelihood penalization"))
+	lr[lr < 0] <- 0
+	
+	return(lr)
+}
+
+fitEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, maxcoverage=NULL, min_alt_cov=0) {
+	# estimates parameters used to calculate emission probabilities
 	
 	# lr: vector of duplicaiton likelihood ratios
 	# coverage: vector of average individual coverage
@@ -184,34 +201,20 @@ initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, max
 	# lrmax_quantile: ignore LRs above this quantile
 	# maxcoverage: maximum coverage
 	# min_alt_coverage: lower bound for truncated normal minimum parameter of alternative coverage distribution
-	# penalty: type of penalized likelihood ratio to use
-	# sampn: sample size (number of diploid individuals)
-	
+
 	# check function params
-	if (! emittype %in% c(0,1)) stop(paste("Invalid emission type", x))
-	
-	# use penalized likelihood
-	if (! is.null(penalty)) {
-		if (penalty %in% c('aic', 'AIC')) {
-			lr <- lr - 2
-		} else if (penalty %in% c('bic', 'BIC')) {
-			if (is.null(sampn)) stop("Use of BIC penalized likelihood ratio requires sample size")
-			adjust <- log(sampn)
-			lr <- lr - adjust
-		} else stop(paste(penalty, "is an invalid likelihood penalization"))
-		lr[lr < 0] <- 0
-	}
+	if (! emittype %in% c(0,1)) stop(paste("Invalid emission type", emittype))
 	
 	# estimate parameters for null coverage distribution
-	covpar <- NULL
+	covparams <- NULL
 	if (emittype == 1) {
 		cat("\nFitting coverage distribution\n")
 		covpar <- fitCoverage(coverage=coverage, lr=lr, maxcov=maxcoverage, alt_min=min_alt_cov)
 		if (is.null(covpar)) stop("Unable to fit coverage distribution")
-	
+		
 		# print fitted coverage distribution params
-		covparams <- c(covpar[1], covpar[2], covpar[3], 2*covpar[2], covpar[4], covpar[5])
-		names(covparams) <- c("ndProb", "ndMean", "ndSD", "dupMean", "dupSD", "dupMin")
+		covparams <- c(covpar[1], covpar[2], covpar[3], 2*covpar[2], covpar[4], covpar[5]) # assume duplicated sites have 2x the coverage as normal sites
+		names(covparams) <- c("cov_ndProb", "cov_ndMean", "cov_ndSD", "cov_dupMean", "cov_dupSD", "cov_dupMin")
 		print(covparams)
 	}
 	
@@ -222,9 +225,27 @@ initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, max
 	
 	# print fitted LR distribution params
 	lrparams <- c(lrpar[1], lrpar[2])
-	names(lrparams) <- c("ndProb", "dupNCP")
+	names(lrparams) <- c("lr_ndProb", "lr_dupNCP")
 	print(lrparams)
 	
+	# return parameter estimates
+	fits <- list(lrparams, covparams)
+	
+	return(fits)
+}
+
+initializeEmissions <- function(lr, lrpar, coverage=NULL, covpar=NULL, emittype) {
+	# initialize emission probabilites
+	
+	# lr: vector of duplicaiton likelihood ratios
+	# larpar: vector with LR density params: [1] nondup prob, [2] dup noncentrality param
+	# coverage: vector of average individual coverage
+	# covpar: vecotr with coverage density params: [1] nondup prob, [2] nondup mean, [3] nondup std deviation, [4] dup mean, [5] dup std deviation, [6] dup min
+	# emittype: use (0) LR only or (1) LR and coverage as emissions for hmm
+	
+	# check function params
+	if (! emittype %in% c(0,1)) stop(paste("Invalid emission type", emittype))
+
 	# calculate emission probabilities
 	cat("\nCalculating emission probabilities\n")
 	
@@ -259,15 +280,14 @@ initializeEmissions <- function(lr, coverage=NULL, emittype, lrmax_quantile, max
 		covprob <- matrix(NA, nrow=2, ncol=length(covseq)+1)
 		
 		seenalt <- 0
-		alt_cov_mu <- 2*covpar[2] # assume duplicated sites have twice the average coverage as nonduplicated sites
 		covprob[1,1] <- ptruncnorm(1, mean=covpar[2], sd=covpar[3], a=0, b=Inf) # null
-		covprob[2,1] <- ptruncnorm(1, mean=alt_cov_mu, sd=covpar[4], a=covpar[5], b=Inf) #alternative
+		covprob[2,1] <- ptruncnorm(1, mean=covpar[4], sd=covpar[5], a=covpar[6], b=Inf) #alternative
 		nullsum <- covprob[1,1]
 		altsum <- covprob[2,1]
 	
 		for (i in covseq) {
 			covprob[1,i] <- ptruncnorm(i, mean=covpar[2], sd=covpar[3], a=0, b=Inf) - nullsum # null
-			covprob[2,i] <- ptruncnorm(i, mean=alt_cov_mu, sd=covpar[4], a=covpar[5], b=Inf) - altsum # alternate
+			covprob[2,i] <- ptruncnorm(i, mean=covpar[4], sd=covpar[5], a=covpar[6], b=Inf) - altsum # alternate
 			nullsum <- nullsum + covprob[1,i]
 			altsum <- altsum + covprob[2,i]
 			if (seenalt == 0 && covprob[2,i] > 0) seenalt <- 1 # check if alternative distribution has been entered
@@ -725,12 +745,19 @@ dupCoordinates <- function (q, sites) {
 		regions[i,3] <- sites[end[i],2]
 	}
 	
-	states <- data.frame(id=sites$V1, pos=sites$V2, state=q-1) # change to 0=nonduplicated, 1=duplicated
+	states <- data.frame(id=sites$V1, pos=sites$V2, state=q-1) # 0 = nonduplicated, 1 = duplicated
 	
 	return(list(regions, states))
 }
 
-mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NULL, altcovmin=0, lrpenalty='aic', sampsize=NULL) {
+formatParams <- function(lrpar, covpar=NULL) {
+	params <- c(lrpar, covpar)
+	parmatrix <- matrix(params, nrow=1, ncol=length(params), dimnames=list(NULL,names(params)))
+	return(parmatrix)
+}
+
+mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1e-4, lrquantile=1.0, maxcoverage=NULL, altcovmin=0, 
+		lrpenalty=NULL, sampsize=NULL, paramsOnly=FALSE, emitparams=NULL) {
 	# main function for duplication HMM
 
 	# lr: ngsParalog calcLR likelihood ratios output
@@ -743,13 +770,33 @@ mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1
 	# altcovmin: lower bound for duplicated sites truncated normal coverage distribution
 	# lrpenalty: type of penalty to apply to the likelihood ratio
 	# sampsize: sample size (number of diploid individuals)
+
+	rv <- list(NULL, NULL, NULL, NULL, NULL) # used to store results
+	
+	# penalize likelihood ratios
+	
+	if (! is.null(lrpenalty)) lr$V5 <- penalizeLR(lr=lr$V5, penalty=lrpenalty, sampn=sampsize)
+	
+	# fit emission density parameters
+	
+	obsfit <- list(NULL, NULL)
+	if (is.null(emitparams)) {
+		obsfit <- fitEmissions(lr=lr$V5, coverage=coverage, emittype=emissiontype, lrmax_quantile=lrquantile, maxcoverage=maxcoverage, min_alt_cov=altcovmin)
+	} else {
+		obsfit[[1]] <- emitparams[1:2]
+		if (emissiontype) obsfit[[2]] <- emitparams[3:8]
+	}
+	
+	
+	rv[[3]] <- formatParams(lrpar=obsfit[[1]], covpar=obsfit[[2]]) # emission density parameter estimates
+	if (paramsOnly) return(rv)
 	
 	# initialize model parameter guesses for Baum-Welch estimation
 	
 	lambda <- list(NA, NA, NA)
 	lambda[[1]] <- initializePi() # initial distribution vector
 	lambda[[2]] <- initializeP() # transitition probability matrix
-	emit <- initializeEmissions(lr=lr$V5, coverage=coverage, emittype=emissiontype, lrmax_quantile=lrquantile, maxcoverage=maxcoverage, min_alt_cov=altcovmin, penalty=lrpenalty, sampn=sampsize)
+	emit <- initializeEmissions(lr=lr$V5, lrpar=obsfit[[1]], coverage=coverage, covpar=obsfit[[2]], emittype=emissiontype)
 	lambda[[3]] <- emit[[1]] # emission probability matrix
 	
 	# estimate hmm parameters with Baum-Welch
@@ -765,7 +812,14 @@ mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1
 	cat("\ncalculating regions\n")
 	regions <- dupCoordinates(q=q, sites=lr[,1:2])
 	
-	return(list(regions[[1]], regions[[2]], lambda[[1]], lambda[[2]])) # return states and estimate of initial state distribution and transition matrix
+	# organize items to return
+
+	rv[[1]] <- regions[[1]] # duplicated regions
+	rv[[2]] <- regions[[2]] # SNP states
+#	rv[[4]] <- lambda[[1]] # initital state distribution - debug
+#	rv[[5]] <- lambda[[2]] # transition matrix - debug
+	
+	return(rv)
 }
 
 parseInput <- function(input) {
@@ -809,26 +863,53 @@ parseInput <- function(input) {
 		if (is.null(input$n)) stop("Use of BIC requires that the diploid sample size be provided with --n")
 	} else stop(paste("--penalty", input$penalty, "invalid: Must be aic, bic, or none"))
 	
+	paronly <- as.numeric(input$paramOnly)
+	if (! paronly %in% c(0,1)) stop(paste("--paramOnly", paronly, "invalid. Must be 1 for only estimating parameters or 0"))
+	
+	printstate <- as.numeric(input$printStates)
+	if (! printstate %in% c(0,1)) stop(paste("--printStates", printstate, "invalid. Must be 1 for printing SNP states or 0"))
+	
 	# open file connections
 	lrf <- read.table(input$lrfile)
+	
 	cov <- NULL
 	if (!is.null(input$covfile)) {
 		cov <- read.table(input$covfile)$V3
 		if (nrow(lrf) != length(cov)) stop("Number of sites in likelihood ratio and coverage files differ")
 	}
 	
+	emitpar <- NULL
+	if (!is.null(input$paramfile)) {
+		partmp <- read.table(input$paramfile, head=TRUE)
+		emitpar <- as.numeric(partmp[1,])
+		names(emitpar) <- colnames(partmp)
+	}
+	
+	# perform some argument checks
+	if (!is.null(emitpar)) {
+		if (emission_type == 0 && length(emitpar) < 2) stop("Missing parameters in paramfile")
+		if (emission_type == 1 && length(emitpar) < 8) stop("Not enough parameters supplied to use --emit 1; check paramfile")
+	}
+	
 	rf_name <- paste(input$outfile, ".rf", sep='')
 	sf_name <- paste(input$outfile, ".states", sep='')
+	parf_name <- paste(input$outfile, ".par", sep='')
 	
-	rf_out <- file(rf_name, "w")
-	sf_out <- file(sf_name, "w")
+	parf_out <- NULL
+	if (is.null(input$paramfile)) parf_out <- file(parf_name, "w")
+
+	rf_out <- NULL
+	if (!paronly) rf_out <- file(rf_name, "w")
 	
-	return(list(lrf, cov, rf_out, sf_out, emission_type, em_max_iter, pdiff, lrcutoff, maxcov, alt_cov_lb, lrpenalty, samplesz))
+	sf_out <- NULL
+	if (!paronly && printstate) sf_out <- file(sf_name, "w")
+	
+	return(list(lrf, cov, rf_out, sf_out, emission_type, em_max_iter, pdiff, lrcutoff, maxcov, alt_cov_lb, lrpenalty, samplesz, paronly, emitpar, parf_out))
 }
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.4.3',"\n") # version 3/26/2018
+v <- paste('dupHMM.R 0.5.0',"\n") # version 3/31/2018
 
 # parse arguments
 
@@ -851,6 +932,9 @@ Options:
    --lrquantile=<float>   Ignore LRs above this quantile when fitting alternative LR distribution [default: 1.0]
    --maxcoverage=<float>  Maximum coverage for fitting coverage distribution
    --dupcovmin=<float>    Lower bound for duplicated coverage distribution [default: 0]
+   --paramOnly=<0|1>      Only estimate emission density params if 1 [default: 0]
+   --paramfile=<file>     File with emission density parameter estimates
+   --printStates=<0|1>    Output SNP states if 1 [default: 0]
 ' -> doc
 
 opts <- docopt(doc, version=v)
@@ -860,16 +944,28 @@ userin <- parseInput(opts)
 
 # run the hmm
 result <- mainDupHmm(lr=userin[[1]], coverage=userin[[2]], emissiontype=userin[[5]], maxiter=userin[[6]], probdiff=userin[[7]], lrquantile=userin[[8]], 
-		maxcoverage=userin[[9]], altcovmin=userin[[10]], lrpenalty=userin[[11]], sampsize=userin[[12]])
-#result <- mainDupHmm(lr=lrf, coverage=cov, maxiter=em_max_iter, probdiff=pdiff, lrquantile=lrcutoff, maxcoverage=maxcov, altcovmin=alt_cov_lb)
+		maxcoverage=userin[[9]], altcovmin=userin[[10]], lrpenalty=userin[[11]], sampsize=userin[[12]], paramsOnly=userin[[13]], emitparams=userin[[14]])
 
 # output results
-cat("Writing results\n")
-write.table(result[[1]], file=userin[[3]], row.names=FALSE, col.names=FALSE, quote=FALSE, sep='\t')
-write.table(result[[2]], file=userin[[4]], row.names=FALSE, col.names=TRUE, quote=FALSE, sep='\t')
 
-# close outputs
-close(userin[[3]])
-close(userin[[4]])
+cat("\nWriting results\n")
+
+# regions
+if (! is.null(userin[[3]])) {
+	write.table(result[[1]], file=userin[[3]], row.names=FALSE, col.names=FALSE, quote=FALSE, sep='\t')
+	close(userin[[3]])
+}
+
+# SNP states
+if (! is.null(userin[[4]])) {
+	write.table(result[[2]], file=userin[[4]], row.names=FALSE, col.names=TRUE, quote=FALSE, sep='\t')
+	close(userin[[4]])
+}
+
+# emission density parameters
+if (! is.null(userin[[15]])) {
+	write.table(result[[3]], file=userin[[15]], row.names=FALSE, col.names=TRUE, quote=FALSE, sep='\t')
+	close(userin[[15]])
+}
 
 cat("Finished\n")
