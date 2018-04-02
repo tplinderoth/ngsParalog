@@ -296,6 +296,23 @@ initializeEmissions <- function(lr, lrpar, coverage=NULL, covpar=NULL, emittype)
 		}
 	}
 	
+	# bound the maximum LR and coverage values
+	lr[lr==0] <- 1
+	lr <- ceiling(lr)
+	lr <- replace(lr, lr > lrmax, lrmax)
+	
+	if (emittype == 1) {
+		coverage[coverage==0] <- 1
+		coverage <- ceiling(coverage)
+		coverage <- replace(coverage, coverage > covmax, covmax)
+	} else coverage <- rep(1,length(lr))
+	
+	# check for excess zero emission probabilities
+	if (sum(lrprob[1,], na.rm=TRUE) == 0) return(list("All nonduplicated LR emission probabilities are zero!", list(lr, coverage)))
+	if (sum(lrprob[2,], na.rm=TRUE) == 0) return(list("All duplicated LR emission probabilities are zero!", list(lr, coverage)))
+	if (!is.null(covprob) && sum(covprob[1,], na.rm=TRUE) == 0) return(list("All nonduplicated coverage emission probabilities are zero!", list(lr, coverage)))
+	if (!is.null(covprob) && sum(covprob[2,], na.rm=TRUE) == 0) return(list("All duplicated coverage emission probabilities are zero! Try increasing --dupcovmin.", list(lr, coverage)))
+
 	# calculate emission probabilities
 	b <- list(matrix(NA, nrow=lrmax, ncol=covmax), matrix(NA, nrow=lrmax, ncol=covmax))
 	
@@ -328,17 +345,6 @@ initializeEmissions <- function(lr, lrpar, coverage=NULL, covpar=NULL, emittype)
 	if (min(c(min(b[[1]][which(b[[1]]>0)]), min(b[[2]][which(b[[2]]>0)]))) < .Machine$double.xmin) {
 		cat("WARNING: Smallest nonzero emission probability less than machine precision - consider decreasing LR quantile\n")
 	}
-	
-	# bound the maximum LR and coverage values
-	lr[lr==0] <- 1
-	lr <- ceiling(lr)
-	lr <- replace(lr, lr > lrmax, lrmax)
-	
-	if (emittype == 1) {
-		coverage[coverage==0] <- 1
-		coverage <- ceiling(coverage)
-		coverage <- replace(coverage, coverage > covmax, covmax)
-	} else coverage <- rep(1,length(lr))
 	
 	return(list(b, list(lr, coverage)))
 }
@@ -719,30 +725,45 @@ dupCoordinates <- function (q, sites) {
 	#}
 	#
 	#regions <- na.omit(regions)
-
+	
 	# faster in R:
+	
 	lag <- c(tail(q,-1), NA)
 	breaks <- which((q == lag) == FALSE)
 	start <- NA
 	end <- NA
 	
 	# calculate regions
-	if (q[breaks[1]] == 1) { # start is nonduplicated
-		start <- breaks[c(TRUE,FALSE)]+1
-		end <- breaks[c(FALSE,TRUE)]
-		if (start[length(start)] > end[length(end)]) end <- c(end, length(q))
-	} else { # start is duplicated
-		start <- c(1, breaks[c(FALSE,TRUE)]+1)
-		end <- breaks[c(TRUE,FALSE)]
-		if (start[length(start)] > end[length(end)]) end <- c(end, length(q))
-	}
-	
-	nregions <- length(start)
-	regions <- matrix(NA, nrow=nregions, ncol=3)
-	for (i in 1:nregions) {
-		regions[i,1] <- as.character(sites[start[i],1])
-		regions[i,2] <- sites[start[i],2]
-		regions[i,3] <- sites[end[i],2]
+	regions <- NULL
+	if (length(breaks) > 0) {
+		if (q[breaks[1]] == 1) { # start is nonduplicated
+			start <- breaks[c(TRUE,FALSE)]+1
+			end <- breaks[c(FALSE,TRUE)]
+			endlen <- length(end)
+			if (endlen == 1 && is.na(end)) end <- length(q)
+			if (start[length(start)] > end[endlen]) end <- c(end, length(q))
+		} else { # start is duplicated
+			start <- c(1, breaks[c(FALSE,TRUE)]+1)
+			end <- breaks[c(TRUE,FALSE)]
+			startlen <- length(start)
+			if (is.na(start[startlen])) start <- start[-startlen]
+			if (start[length(start)] > end[length(end)]) end <- c(end, length(q))
+		}
+		
+		nregions <- length(start)
+		regions <- matrix(NA, nrow=nregions, ncol=3)
+		for (i in 1:nregions) {
+			regions[i,1] <- as.character(sites[start[i],1])
+			regions[i,2] <- sites[start[i],2]
+			regions[i,3] <- sites[end[i],2]
+		}
+	} else {
+		if (q[1] == 2) { # all sites duplicated
+			regions <- matrix(NA, nrow=1, ncol=3)
+			regions[1,1] <- as.character(sites[1,1])
+			regions[1,2] <- sites[1,2]
+			regions[1,3] <- sites[nrow(sites),2]
+		}
 	}
 	
 	states <- data.frame(id=sites$V1, pos=sites$V2, state=q-1) # 0 = nonduplicated, 1 = duplicated
@@ -787,7 +808,6 @@ mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1
 		if (emissiontype) obsfit[[2]] <- emitparams[3:8]
 	}
 	
-	
 	rv[[3]] <- formatParams(lrpar=obsfit[[1]], covpar=obsfit[[2]]) # emission density parameter estimates
 	if (paramsOnly) return(rv)
 	
@@ -797,6 +817,7 @@ mainDupHmm <- function (lr, coverage=NULL, emissiontype, maxiter=100, probdiff=1
 	lambda[[1]] <- initializePi() # initial distribution vector
 	lambda[[2]] <- initializeP() # transitition probability matrix
 	emit <- initializeEmissions(lr=lr$V5, lrpar=obsfit[[1]], coverage=coverage, covpar=obsfit[[2]], emittype=emissiontype)
+	if (is.character(emit[[1]])) stop(emit[[1]],call.=FALSE) # implement better exception handling here
 	lambda[[3]] <- emit[[1]] # emission probability matrix
 	
 	# estimate hmm parameters with Baum-Welch
@@ -909,7 +930,7 @@ parseInput <- function(input) {
 
 ###### end functions ######
 
-v <- paste('dupHMM.R 0.5.0',"\n") # version 3/31/2018
+v <- paste('dupHMM.R 0.5.1',"\n") # version 4/1/2018
 
 # parse arguments
 
