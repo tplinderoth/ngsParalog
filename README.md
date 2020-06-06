@@ -105,8 +105,8 @@ number of sites that were tested.
 	# generate list of sites that don't show evidence of mismapping at 0.05 significance level:
 	> qc.sites <- lr[-which(lr$pval.adj < 0.05),1:2]
 
-It can also be useful to generate manhatten plots of the LRs. For example, below is a plot of the mismapping LRs for two closely-related
-cichlid fish species revealing duplications unique to one of the species (denoted with stars). Peaks in the manhatten plot represent regions of problematic
+It can also be useful to generate Manhattan plots of the LRs. For example, below is a plot of the mismapping LRs for two closely-related
+cichlid fish species revealing duplications unique to one of the species (denoted with stars). Peaks in the Manhattan plot represent regions of problematic
 mapping.
 
 ![calcLR_duplication_example](./example/calcLR_duplication_example.png)
