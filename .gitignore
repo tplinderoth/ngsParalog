@@ -6,5 +6,5 @@ Debug/
 *.project
 Release/
 .settings/
-./example/calcLR_manhatten_example.svg
-./example/hmm_region_combined_info.txt
+example/calcLR_manhatten_example.svg
+example/hmm_region_combined_info.txt
