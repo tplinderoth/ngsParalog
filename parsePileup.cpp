@@ -62,6 +62,7 @@ Pileup::Pileup ()
 	  _refallele('\0'),
 	  _encode(33.0),
 	  _minQ(13.0),
+    _ploidy(2),
 	  _nind(0),
 	  _depthReserve(20),
 	  _numalt(0),
@@ -341,7 +342,7 @@ void Pileup::recordRead (const unsigned int ind, std::string::iterator& q, unsig
 	if (phredq < 0.0)
 	{
 		_fail = 1;
-		throw std::runtime_error(ExceptionFormatter() << "Negative quality score " << phredq << " at " << _name << " " << _pos << " in call to Pileup::" << __func__ << "()");
+		throw std::runtime_error(std::forward<std::string>(ExceptionFormatter() << "Negative quality score " << phredq << " at " << _name << " " << _pos << " in call to Pileup::" << __func__ << "()"));
 	}
 
 	if (phredq >= _minQ)
@@ -464,6 +465,19 @@ void Pileup::setIndN (unsigned int n)
 		_nind = n;
 	else
 		fprintf(stderr, "Attempt to set nonpositive number of individuals in Pileup::%s()\n", __func__);
+}
+
+void Pileup::setPloidy (unsigned int p)
+{
+  if (p == 1 || p == 2)
+    _ploidy = p;
+  else
+		fprintf(stderr, "Attempt to set ploidy to value other than haploid or diploid in Pileup::%s()\n", __func__);
+}
+
+unsigned int Pileup::ploidy () const
+{
+  return _ploidy;
 }
 
 void Pileup::initializeSeqdat (const size_t n)
@@ -876,4 +890,4 @@ const char* PileupFormatException::what() const throw()
 }
 
 UnknownReadException::UnknownReadException (const char readtype)
-	: std::runtime_error(ExceptionFormatter() << readtype << " is an invalid read type") {}
+	: std::runtime_error(std::forward<std::string>(ExceptionFormatter() << readtype << " is an invalid read type")) {}

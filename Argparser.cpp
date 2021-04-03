@@ -14,6 +14,7 @@ Argparser::Argparser ()
 	: _task(0),
 	  _minQ(20),
 	  _Qoffset(33),
+    _ploidy(2),
 	  _minind(1),
 	  _mincov(1),
 	  _printml(0),
@@ -120,8 +121,20 @@ int Argparser::parseInput (const int c, char** v, const char* version)
 			}
 		}
 		else if (strcmp(v[argPos], "-verbose") == 0)
+    {
 			_verbose = atoi(v[argPos+1]);
-
+    }
+    else if (strcmp(v[argPos], "-ploidy") == 0)
+    {
+      _ploidy = atoi(v[argPos+1]);
+      if (_ploidy == 1 || _ploidy == 2)
+      {}
+      else
+      {
+        fprintf(stderr,"supported -ploidy are 1 or 2");
+        return -1;
+      }
+    }
 		else
 		{
 			fprintf(stderr, "Unknown argument: %s\n", v[argPos]);
@@ -236,6 +249,11 @@ void Argparser::closeStreams ()
 	}
 }
 
+unsigned int Argparser::ploidy () const
+{
+  return _ploidy;
+}
+
 double Argparser::minQ () const
 {
 	return _minQ;
@@ -322,6 +340,7 @@ void Argparser::calcLRinfo ()
 	<< "\n" << std::setw(w) << std::left << "-minQ" << std::setw(w) << "<float>" << "Minimum base quality score [" << _minQ << "]"
 	<< "\n" << std::setw(w) << std::left << "-minind" << std::setw(w) << "<int>" << "Minimum number of covered individuals to retain site [" << _minind << "]"
 	<< "\n" << std::setw(w) << std::left << "-mincov" << std::setw(w) << "<int>" << "Minimum number of reads for an individual to be considered 'covered' [" << _mincov << "]"
+	<< "\n" << std::setw(w) << std::left << "-ploidy" << std::setw(w) << "<int>" << "Ploidy of organism (1 or 2) [" << _ploidy << "]"
 	<< "\n\nOutput by field:"
 	<< "\n(1) sequence ID"
 	<< "\n(2) position in sequence (1-base indexed)"

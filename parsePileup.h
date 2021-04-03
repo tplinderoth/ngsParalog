@@ -66,6 +66,7 @@ public:
 	void setQualCode (double); /* sets encode, the phred score offset value */
 	void setMinQ (double q); /* sets minimum quality score for read to be considered */
 	unsigned int setn (const std::string& ins, const char delim='\t'); /* extracts number of individuals from pileup line and initializes seqdat member*/
+  void setPloidy (const unsigned int p); /* sets organism ploidy */
 	void setMajor(char allele); /* assign major allele*/
 	void setMinor (char allele); /* assign minor allele */
 	void setpoolsz (unsigned int n); /* sets _poolsz member */
@@ -91,6 +92,7 @@ public:
 	std::string treatment () const; /* returns treatment member */
 	char majorid () const; /* returns major allele. If not previously set, returns empirical major */
 	char minorid () const; /* returns minor allele. If not previously set, returns empirical minor */
+  unsigned int ploidy () const; /* returns organism ploidy */
 	char empiricalMajor (bool wt=false); /* returns the most common base for site */
 	char empiricalMinor (); /* returns second most common base - counts are weighted by quality scores */
 	char empiricalMinorFast (bool wt=false); /* returns second most common base without considering quality scores */
@@ -118,6 +120,7 @@ private:
 	double tcount (int i, char a); /* used with treatcounts to get counts from _tcounts */
 	double _encode; /* minimum possible ASCII decimal value used to encode quality scores */
 	double _minQ; /* minimum quality score for read to be kept */
+  unsigned int _ploidy;
 	unsigned int _nind;
 	unsigned int _depthReserve;
 	unsigned int _numalt;

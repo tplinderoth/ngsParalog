@@ -111,7 +111,7 @@ int doLR (Argparser* params)
 	try
 	{
 		rv = processPileup(params->input(), params->output(), &altmodel, &nullmodel, likefn, dlikefn, params->offsetQ(),
-				params->minQ(), params->mincov(), params->minind(), params->printML());
+				params->minQ(), params->mincov(), params->minind(), params->printML(), params->ploidy());
 	}
 	catch (PileupException& error)
 	{
@@ -192,7 +192,7 @@ int setOptim (Optim& model, bool isalt, int verb)
 
 int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim* nullmodel, double (*fn)(const double x[], const void*),
 		void (*dfn)(const double x[], double y[], const void*), const double qoffset, const double minq, const unsigned int mindepth,
-		const unsigned int minind, int printML)
+		const unsigned int minind, int printML, const unsigned int ploidy)
 {
 	const char delimiter = '\t'; // assume pileup is tab delimited
 	const bool weightcount = true;
@@ -207,6 +207,7 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 	piledat.setMinQ(minq);
 	getline(indat, line);
 	piledat.setn(line, delimiter);
+  piledat.setPloidy(ploidy);
 
 	// calculate sequence ID buffer size for pretty printing
 	unsigned int idbuffer = calcIdBuffer(Pileup::idSize(line, delimiter));

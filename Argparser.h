@@ -20,6 +20,7 @@ public:
         int parseInput (const int c, char** v, const char* version); /* parse command line arguments to set data members*/
         int setStreams (std::string infile, std::string outfile); /* sets IO streams */
         void closeStreams (); /* close IO streams */
+        unsigned int ploidy () const;
         double minQ () const; /* return _minQ */
         double offsetQ () const; /* return _Qoffset */
         unsigned int minind () const; /* return minind */
@@ -46,6 +47,7 @@ private:
         std::string _outfile; /* name of output file */
         double _minQ; /* min base quality score */
         double _Qoffset; /* min possible ASCII decimal value used to encode quality scores */
+        unsigned int _ploidy; /* ploidy of organism */
         int _minind; /* min number of covered individuals */
         int _mincov; /* min number of reads for an individual to be considered "covered" */
         int _printml; /* controls what parameter ML estimates are outputted */
