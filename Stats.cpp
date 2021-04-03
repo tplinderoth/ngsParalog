@@ -287,7 +287,7 @@ void Stats::kahanSum(double summand, double* total, double* comp)
 }
 
 NoDataException::NoDataException (const char* id, const unsigned int pos)
-	: std::runtime_error(ExceptionFormatter() << id << " " << pos << " has no data") {}
+	: std::runtime_error(std::forward<std::string>(ExceptionFormatter() << id << " " << pos << " has no data")) {}
 
 /*
  * The following code for calculating an analytic gradient is deprecated - switched to numeric gradient.
