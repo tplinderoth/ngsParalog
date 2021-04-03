@@ -63,6 +63,7 @@ Pileup::Pileup ()
 	  _encode(33.0),
 	  _minQ(13.0),
 	  _nind(0),
+    _ploidy(2),
 	  _depthReserve(20),
 	  _numalt(0),
 	  _numref(0),
@@ -464,6 +465,19 @@ void Pileup::setIndN (unsigned int n)
 		_nind = n;
 	else
 		fprintf(stderr, "Attempt to set nonpositive number of individuals in Pileup::%s()\n", __func__);
+}
+
+void Pileup::setPloidy (unsigned int p)
+{
+  if (p == 1 || p == 2)
+    _ploidy = p;
+  else
+		fprintf(stderr, "Attempt to set ploidy to value other than haploid or diploid in Pileup::%s()\n", __func__);
+}
+
+unsigned int Pileup::ploidy () const
+{
+  return _ploidy;
 }
 
 void Pileup::initializeSeqdat (const size_t n)

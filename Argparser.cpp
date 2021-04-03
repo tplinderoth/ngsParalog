@@ -16,6 +16,7 @@ Argparser::Argparser ()
 	  _Qoffset(33),
 	  _minind(1),
 	  _mincov(1),
+    _ploidy(2),
 	  _printml(0),
 	  _numericGrad(1),
 	  _verbose(-1),
@@ -120,8 +121,20 @@ int Argparser::parseInput (const int c, char** v, const char* version)
 			}
 		}
 		else if (strcmp(v[argPos], "-verbose") == 0)
+    {
 			_verbose = atoi(v[argPos+1]);
-
+    }
+    else if (strcmp(v[argPos], "-ploidy") == 0)
+    {
+      _ploidy = atoi(v[argPos+1]);
+      if (_ploidy == 1 || _ploidy == 2)
+      {}
+      else
+      {
+        fprintf(stderr,"supported -ploidy are 1 or 2");
+        return -1;
+      }
+    }
 		else
 		{
 			fprintf(stderr, "Unknown argument: %s\n", v[argPos]);
@@ -234,6 +247,11 @@ void Argparser::closeStreams ()
 		_fout.flush();
 		_fout.close();
 	}
+}
+
+unsigned int Argparser::ploidy () const
+{
+  return _ploidy;
 }
 
 double Argparser::minQ () const

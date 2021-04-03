@@ -34,7 +34,7 @@ double optimLR (Optim* null, Optim* alt, double (*fn)(const double x[], const vo
 double negLogfn (const double para [], const void *generic_dat); // paralog likelihood function
 double prRead (double m, double qscore, unsigned int g2, char major, char obs);
 void diffRead (const double err, const int g1, const int g2, const int read, double* dm, double* df);
-double genoPrior (const double f, const int g2);
+double genoPrior (const double f, const int g2, const unsigned int ploidy);
 double diffGenoPrior (const double f, const int g1, const int g2);
 void kahanSum(double summand, double* total, double* comp);
 double maxlike (const double* likes, const int dim);

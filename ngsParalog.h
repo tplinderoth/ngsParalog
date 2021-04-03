@@ -24,7 +24,7 @@ int doLR (Argparser* params); // calculate per site LR of mismapped reads
 int doRegion(); // do HMM to find coordinates of mismapping
 int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim* nullmodel, double (*fn)(const double x[], const void*),
 		void (*dfn)(const double x[], double y[], const void*), const double qoffset, const double minq, const unsigned int mindepth,
-		const unsigned int minind, int printML);
+		const unsigned int minind, int printML, const unsigned int ploidy);
 void endMessage (int status);
 
 #endif /* NGSPARALOG_H_ */

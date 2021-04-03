@@ -102,6 +102,7 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 
 	const Optim* optdata = static_cast<const Optim*>(generic_dat);
 	const Pileup* pile = static_cast<const Pileup*>(optdata->data);
+  const unsigned int ploidy = pile->ploidy(); // ploidy of organism
 	const int ngeno2 = 3; // number of possible genotypes for G2
 	const int npara = 2; // number parameters in model
 	const int findex = 0; // index position of allele frequency parameter
@@ -132,9 +133,9 @@ double Stats::negLogfn (const double para [], const void *generic_dat)
 	char minor = pile->minorid();
 
 	// assume major allele comes from G1, minor allele from G2
-	genoprior[0] = genoPrior(p[findex], 0); // P(G1 = 0, G2 = 0|f)
-	genoprior[1] = genoPrior(p[findex], 1);  // P(G1 = 0, G2 = 1|f)
-	genoprior[2] = genoPrior(p[findex], 2); // P(G1 = 0, G2 = 2|f)
+	genoprior[0] = genoPrior(p[findex], 0, ploidy); // P(G1 = 0, G2 = 0|f)
+	genoprior[1] = genoPrior(p[findex], 1, ploidy);  // P(G1 = 0, G2 = 1|f)
+	genoprior[2] = genoPrior(p[findex], 2, ploidy); // P(G1 = 0, G2 = 2|f)
 	static std::vector<SiteData>::const_iterator ind_iter;
 	static std::vector<seqread>::const_iterator readIter;
 
@@ -232,25 +233,48 @@ double Stats::minor02 (double m, double err)
 }
 // end minor read probability functions
 
-double Stats::genoPrior (const double f, const int g2)
+double Stats::genoPrior (const double f, const int g2, const unsigned int ploidy)
 {
 	//calculates P(G1,G2|f)
 
 	double p = 0;
-	switch (g2)
-	{
-		case 0 :
-			p = (1.0-f)*(1.0-f);
-			break;
-		case 1 :
-			p = 2*f*(1.0-f);
-			break;
-		case 2 :
-			p = f*f;
-			break;
-		default:
-			throw AssertStyleException(ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()");
-	}
+  switch (ploidy)
+  {
+    case 1:
+	    switch (g2)
+	    {
+	    	case 0 :
+	    		p = 1.0-f;
+	    		break;
+	    	case 1 :
+	    		p = 0.;
+	    		break;
+	    	case 2 :
+	    		p = f;
+	    		break;
+	    	default:
+	    		throw AssertStyleException(ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()");
+	    }
+      break;
+    case 2:
+	    switch (g2)
+	    {
+	    	case 0 :
+	    		p = (1.0-f)*(1.0-f);
+	    		break;
+	    	case 1 :
+	    		p = 2*f*(1.0-f);
+	    		break;
+	    	case 2 :
+	    		p = f*f;
+	    		break;
+	    	default:
+	    		throw AssertStyleException(ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()");
+	    }
+      break;
+    default:
+	    throw AssertStyleException(ExceptionFormatter() << "ploidy value of " << ploidy << " not allowed in call to Stats::" << __func__ << "()");
+  }
 	return p;
 }
 
