@@ -340,6 +340,7 @@ void Argparser::calcLRinfo ()
 	<< "\n" << std::setw(w) << std::left << "-minQ" << std::setw(w) << "<float>" << "Minimum base quality score [" << _minQ << "]"
 	<< "\n" << std::setw(w) << std::left << "-minind" << std::setw(w) << "<int>" << "Minimum number of covered individuals to retain site [" << _minind << "]"
 	<< "\n" << std::setw(w) << std::left << "-mincov" << std::setw(w) << "<int>" << "Minimum number of reads for an individual to be considered 'covered' [" << _mincov << "]"
+	<< "\n" << std::setw(w) << std::left << "-ploidy" << std::setw(w) << "<int>" << "Ploidy of organism (1 or 2) [" << _ploidy << "]"
 	<< "\n\nOutput by field:"
 	<< "\n(1) sequence ID"
 	<< "\n(2) position in sequence (1-base indexed)"
