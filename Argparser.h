@@ -50,6 +50,7 @@ private:
         int _mincov; /* min number of reads for an individual to be considered "covered" */
         int _printml; /* controls what parameter ML estimates are outputted */
         int _numericGrad; /* 1 - use numeric gradient, 0 - use analytic gradient */
+	int _allow_overwrite; /* 1 - allow overwriting outputs, 0 - stop execution if overwrite attempted */
         int _verbose; /* controls amount optimization output */
         /* IO streams */
         std::fstream _fin;

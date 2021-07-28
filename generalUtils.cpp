@@ -20,7 +20,7 @@ char* getCString (std::string s)
 }
 
 // getFILE is a wrapper for getting files
-bool getFILE(std::fstream &fp, const char* fname, const char* mode)
+bool getFILE(std::fstream &fp, const char* fname, const char* mode, int allow_overwrite)
 {
 	int writeFile = 0;
 	if (strcmp(mode, "out") == 0)
@@ -28,8 +28,10 @@ bool getFILE(std::fstream &fp, const char* fname, const char* mode)
 		writeFile = 1;
 		if(writeFile && fexists(fname))
 		{
-			fprintf(stderr,"File already exists: %s\n",fname);
-			return false;
+			if (!allow_overwrite) {
+				fprintf(stderr,"File already exists (to allow overwriting using '-allow_overwrite 1'): %s\n",fname);
+				return false;
+			}
 		}
 
 		fp.open(fname, std::ios::out);

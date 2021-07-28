@@ -133,7 +133,7 @@ private:
 // FUNCTION PROTOTYPES
 
 char * getCString (std::string);
-bool getFILE (std::fstream &, const char*, const char*);
+bool getFILE (std::fstream &, const char*, const char*, int allow_overwrite = 1);
 int fexists (const char*);
 bool readChunk (std::vector<std::string>& datavec, unsigned int* chunk, int* end, std::istream& is = std::cin);
 std::vector<std::string> split (const std::string&, char);

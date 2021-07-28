@@ -18,6 +18,7 @@ Argparser::Argparser ()
 	  _mincov(1),
 	  _printml(0),
 	  _numericGrad(1),
+	  _allow_overwrite(0),
 	  _verbose(-1),
 	  _is(std::cin),
 	  _os(std::cout.rdbuf()),
@@ -119,9 +120,17 @@ int Argparser::parseInput (const int c, char** v, const char* version)
 				return -1;
 			}
 		}
-		else if (strcmp(v[argPos], "-verbose") == 0)
+		else if (strcmp(v[argPos], "-verbose") == 0) {
 			_verbose = atoi(v[argPos+1]);
-
+		}
+		else if (strcmp(v[argPos], "-allow_overwrite")) {
+			_allow_overwrite = atoi(v[argPos]+1);
+			if (_allow_overwrite == 0 || _allow_overwrite == 1){
+			} else {
+				fprintf(stderr, "-allow_overwrite must be enabled with 1 or disabled with 0\n");
+				return -1;
+			}
+		}
 		else
 		{
 			fprintf(stderr, "Unknown argument: %s\n", v[argPos]);
@@ -207,7 +216,7 @@ int Argparser::setStreams (const std::string infile, const std::string outfile)
         // open output steam
         if (!outfile.empty())
         {
-                if (getFILE(_fout, outfile.c_str(), "out"))
+                if (getFILE(_fout, outfile.c_str(), "out", _allow_overwrite))
                 {
                         _os.rdbuf(_fout.rdbuf()); // switch output stream's buffer to output file's buffer
                         std::cerr << "Dumping results to " << outfile << "\n";
@@ -304,10 +313,14 @@ int Argparser::fail () const
 void Argparser::maininfo (const char* v)
 {
 	int w = 12;
+	int w2 = 18;
+	int w3 = 8;
 	std::cerr << "\nngsParalog\nversion " << v << "\n\nUsage: ngsParalog [command] [arguments]\n"
 	<< "\nCommands:\n"
 	<< "\n" << std::setw(w) << std::left << "calcLR" << "Calculate per site likelihood ratio of duplication"
 	<< "\n" << std::setw(w) << std::left << "findRegion" << "Find the coordinates of duplicated genomic regions"
+	<< "\n\nSome general possibly useful arguments:"
+	<< "\n" << std::setw(w2) << std::left << "-allow_overwrite" << std::setw(w3) << "<0|1>" << "Enable overwriting previous output with 1 [" << _allow_overwrite << "]"
 	<< "\n\n";
 }
 
@@ -335,7 +348,5 @@ void Argparser::findRegionInfo ()
 {
 	//int w = 12;
 	std::cerr << "\nUsage: ngsParalog findRegion [arguments]\n"
-	<< "\nArguments:\n"
-	<< "\n\nOutput:\n"
-	<< "\n";
+	<< "\nIn development\n\n";
 }
