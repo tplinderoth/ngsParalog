@@ -123,9 +123,9 @@ int Argparser::parseInput (const int c, char** v, const char* version)
 		else if (strcmp(v[argPos], "-verbose") == 0) {
 			_verbose = atoi(v[argPos+1]);
 		}
-		else if (strcmp(v[argPos], "-allow_overwrite")) {
-			_allow_overwrite = atoi(v[argPos]+1);
-			if (_allow_overwrite == 0 || _allow_overwrite == 1){
+		else if (strcmp(v[argPos], "-allow_overwrite") == 0) {
+			_allow_overwrite = atoi(v[argPos + 1]);
+			if (_allow_overwrite == 0 || _allow_overwrite == 1) {
 			} else {
 				fprintf(stderr, "-allow_overwrite must be enabled with 1 or disabled with 0\n");
 				return -1;
