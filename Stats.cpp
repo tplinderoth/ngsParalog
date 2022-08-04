@@ -192,7 +192,7 @@ double Stats::prRead (double m, double qscore, unsigned int g2, char major, char
 	static readProb p;
 
 	if (g2 > 2)
-		throw AssertStyleException(ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()");
+		throw AssertStyleException((ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()").str().c_str());
 
 	double err = pow(10, -qscore/10.0);
 	return (obs == major ? p.majorprobs[g2](m, err) : p.minorprobs[g2](m, err));
@@ -249,7 +249,7 @@ double Stats::genoPrior (const double f, const int g2)
 			p = f*f;
 			break;
 		default:
-			throw AssertStyleException(ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()");
+			throw AssertStyleException((ExceptionFormatter() << "g2 value of " << g2 << " not allowed in call to Stats::" << __func__ << "()").str().c_str());
 	}
 	return p;
 }

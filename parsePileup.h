@@ -41,16 +41,17 @@ class PileupException : public std::exception
 {
 public:
 	explicit PileupException (const char* error = NULL);
-	virtual const char* what () const throw();
+	virtual const char* what () throw();
 protected:
 	const char* error_;
+	std::string _errmsg;
 };
 
 class PileupFormatException : public PileupException
 {
 public:
 	explicit PileupFormatException(const char* error = NULL);
-	virtual const char* what () const throw();
+	virtual const char* what () throw();
 };
 
 class UnknownReadException : public std::runtime_error

@@ -122,7 +122,7 @@ int Pileup::getSeqDat (const std::string& pile, const char delim)
 		if (_nind < 1)
 		{
 			_fail = 1;
-			throw PileupException(ExceptionFormatter() << "No individuals found in pileup input in call to Pileup::" << __func__ << "()");
+			throw PileupException((ExceptionFormatter() << "No individuals found in pileup input in call to Pileup::" << __func__ << "()").str().c_str());
 		}
 		initializeSeqdat(_nind);
 	}
@@ -153,7 +153,7 @@ int Pileup::getSeqDat (const std::string& pile, const char delim)
 	if ((*iter).empty())
 	{
 		_fail = 1;
-		throw PileupFormatException(ExceptionFormatter() << "No sequencing data for " << _name << " " << _pos << " in call to Pileup::" << __func__ << "()");
+		throw PileupFormatException((ExceptionFormatter() << "No sequencing data for " << _name << " " << _pos << " in call to Pileup::" << __func__ << "()").str().c_str());
 	}
 
 	for (iter = pvec.begin() + 3; iter != pvec.end(); ++iter)
@@ -482,7 +482,7 @@ unsigned int Pileup::setn (const std::string& ins, const char delim)
 	if (!ins.empty())
 		initializeSeqdat(extractIndN(ins, delim));
 	else
-		throw PreConditionException(ExceptionFormatter() << "Empty pileup line passed to Pileup::" << __func__ << "()");
+		throw PreConditionException((ExceptionFormatter() << "Empty pileup line passed to Pileup::" << __func__ << "()").str().c_str());
 
 	return static_cast<unsigned int>(seqdat.size());
 }
@@ -853,26 +853,31 @@ unsigned int Pileup::idSize (const std::string& line, const char delim)
 }
 
 PileupException::PileupException(const char* error)
-	: error_(error)
+	: error_(error),
+	  _errmsg("")
 {}
 
-const char* PileupException::what() const throw()
+const char* PileupException::what() throw()
 {
 	std::stringstream msg;
 	msg << "Pileup exception occurred:\n";
 	if (error_) msg << error_;
-	return msg.str().c_str();
+	if (!_errmsg.empty()) _errmsg.clear();
+	_errmsg = msg.str();
+	return _errmsg.c_str();
 }
 
 PileupFormatException::PileupFormatException(const char* error)
 	: PileupException(error)
 {}
 
-const char* PileupFormatException::what() const throw()
+const char* PileupFormatException::what() throw()
 {
 	std::stringstream msg;
 	msg << PileupException::what() << "\nInvalid pileup file format\n";
-	return msg.str().c_str();
+	if (!_errmsg.empty()) _errmsg.clear();
+	_errmsg = msg.str();
+	return _errmsg.c_str();
 }
 
 UnknownReadException::UnknownReadException (const char readtype)

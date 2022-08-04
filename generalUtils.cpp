@@ -113,25 +113,30 @@ double decimalUnifBound (double min, double max )
 }
 
 AssertStyleException::AssertStyleException(const char* err)
-        : _error(err)
+        : _error(err),
+	  _errmsg("")
 {}
 
-const char* AssertStyleException::what() const throw()
+const char* AssertStyleException::what() throw()
 {
         std::stringstream message;
         message << "Assert type exception occurred:\n";
         if (_error) message << _error;
-        return message.str().c_str();
+	if (!_errmsg.empty()) _errmsg.clear();
+	_errmsg = message.str();
+        return _errmsg.c_str();
 }
 
 PreConditionException::PreConditionException(const char* err)
 	: AssertStyleException(err)
 {}
 
-const char* PreConditionException::what() const throw()
+const char* PreConditionException::what() throw()
 {
         std::stringstream message;
         message << "Precondition exception occurred:\n";
         if (_error) message << _error;
-        return message.str().c_str();
+	if (!_errmsg.empty()) _errmsg.clear();
+	_errmsg = message.str();
+        return _errmsg.c_str();
 }

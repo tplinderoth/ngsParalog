@@ -518,12 +518,12 @@ double Optim::multiOptim (double (*fn)(const double x[], const void*), void (*df
 	if (_dim > 2)
 	{
 		_fail = 1;
-		throw PreConditionException(ExceptionFormatter() << "_dim cannot be greater than 2 in call to Optim::" << __func__ << "()");
+		throw PreConditionException((ExceptionFormatter() << "_dim cannot be greater than 2 in call to Optim::" << __func__ << "()").str().c_str());
 	}
 	if (data == NULL)
 	{
 		_fail = 1;
-		throw PreConditionException(ExceptionFormatter() << "Member data null in call to Optim::" << __func__ << "()");
+		throw PreConditionException((ExceptionFormatter() << "Member data null in call to Optim::" << __func__ << "()").str().c_str());
 	}
 
 	double max = std::numeric_limits<double>::max();
