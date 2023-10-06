@@ -8,7 +8,7 @@ and repetitive sequence for example) rely on inflated coverage or excess heteroz
 heterozygosity at low coverage, particurly when there is bias in mapping reads derived from different genomic regions. However, low depth hinders accurate genotype
 calling thereby greatly diminishing power to  detect mapping problems based on excess heterozygosity. ngsParalog offers a solution to these problems through a likelihood
 approach in which sequencing errors and within-individual read proportions are modeled, offering more power to detect mapping problems at lower FDR.
-In addition, the dupHMM.R script implements a Hidden Markov Model to infer start and stop coordinates of mapping problems along large scaffolds based on both sequencing depth
+In addition, the dupHMM.R script implements a Hidden Markov Model to infer start and stop coordinates of regions refractory to short read mapping along large scaffolds based on both sequencing depth
 and the ngsParalog mismapping LRs. This achieves higher accuracy for identifying regions of mismapping than coverage or excess heterozygosity alone, and can delineate
 between signatures of deviations from HWE due to balancing selection and mismapping.
 
