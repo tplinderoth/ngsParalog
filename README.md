@@ -9,8 +9,8 @@ heterozygosity at low coverage, particurly when there is bias in mapping reads d
 calling thereby greatly diminishing power to  detect mapping problems based on excess heterozygosity. ngsParalog offers a solution to these problems through a likelihood
 approach in which sequencing errors and within-individual read proportions are modeled, offering more power to detect mapping problems at lower FDR.
 In addition, the dupHMM.R script implements a Hidden Markov Model to infer start and stop coordinates of regions refractory to short read mapping along large scaffolds based on both sequencing depth
-and the ngsParalog mismapping LR statistic. This achieves higher accuracy for identifying regions of mismapping than coverage or excess heterozygosity alone, and can decipher
-when excess heterozygosity is due to balancing selection versus mismapping.
+and the ngsParalog mismapping LR statistic. This achieves higher accuracy for identifying regions of mismapping than coverage or excess heterozygosity alone, and is robust to confounding from 
+overdominance.
 
 ## Installation
 
