@@ -10,7 +10,7 @@ calling thereby greatly diminishing power to  detect mapping problems based on e
 approach in which sequencing errors and within-individual read proportions are modeled, offering more power to detect mapping problems at lower FDR.
 In addition, the dupHMM.R script implements a Hidden Markov Model to infer start and stop coordinates of regions refractory to short read mapping along large scaffolds based on both sequencing depth
 and the ngsParalog mismapping LR statistic. This achieves higher accuracy for identifying regions of mismapping than coverage or excess heterozygosity alone, and can delineate
-between signatures of deviations from HWE due to balancing selection and mismapping.
+between signatures of excess heterozygosity due to balancing selection and mismapping.
 
 ## Installation
 
