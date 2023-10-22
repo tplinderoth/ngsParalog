@@ -5,6 +5,8 @@ Debug/
 *.cproject
 *.project
 Release/
+ngsparalog/
+release_tar/
 .settings/
 example/calcLR_manhatten_example.svg
 example/hmm_region_combined_info.txt
