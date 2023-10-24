@@ -83,6 +83,7 @@ class AssertStyleException : public std::exception
 {
 public:
         AssertStyleException (const char* err = NULL);
+	~AssertStyleException () throw();
         virtual const char* what () throw();
 protected:
         const char* _error;

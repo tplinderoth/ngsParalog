@@ -857,6 +857,8 @@ PileupException::PileupException(const char* error)
 	  _errmsg("")
 {}
 
+PileupException::~PileupException () throw() {}
+
 const char* PileupException::what() throw()
 {
 	std::stringstream msg;

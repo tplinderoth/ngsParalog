@@ -41,6 +41,7 @@ class PileupException : public std::exception
 {
 public:
 	explicit PileupException (const char* error = NULL);
+	~PileupException () throw();
 	virtual const char* what () throw();
 protected:
 	const char* error_;

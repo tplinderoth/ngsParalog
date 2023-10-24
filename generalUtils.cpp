@@ -117,6 +117,8 @@ AssertStyleException::AssertStyleException(const char* err)
 	  _errmsg("")
 {}
 
+AssertStyleException::~AssertStyleException () throw() {}
+
 const char* AssertStyleException::what() throw()
 {
         std::stringstream message;
