@@ -111,7 +111,7 @@ int doLR (Argparser* params)
 	try
 	{
 		rv = processPileup(params->input(), params->output(), &altmodel, &nullmodel, likefn, dlikefn, params->offsetQ(),
-				params->minQ(), params->mincov(), params->minind(), params->printML());
+				params->minQ(), params->mincov(), params->minind(), params->printML(), params->runinfo());
 	}
 	catch (PileupException& error)
 	{
@@ -192,7 +192,7 @@ int setOptim (Optim& model, bool isalt, int verb)
 
 int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim* nullmodel, double (*fn)(const double x[], const void*),
 		void (*dfn)(const double x[], double y[], const void*), const double qoffset, const double minq, const unsigned int mindepth,
-		const unsigned int minind, int printML)
+		const unsigned int minind, int printML, int runinfo)
 {
 	const char delimiter = '\t'; // assume pileup is tab delimited
 	const bool weightcount = true;
@@ -233,7 +233,9 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 		// check for excessive missing data
 		if (numCovered(&piledat, mindepth) < minind)
 		{
-			fprintf(stderr, "skipping %s %u --> inadequate coverage\n", piledat.seqName().c_str(), piledat.position());
+			if (runinfo > 1) {
+				fprintf(stderr, "skipping %s %u --> inadequate coverage\n", piledat.seqName().c_str(), piledat.position());
+			}
 			getline(indat,line);
 			continue;
 		}
@@ -251,11 +253,15 @@ int processPileup (std::istream& indat, std::ostream& os, Optim* altmodel, Optim
 		}
 		catch (const OptimFailureException& error)
 		{
-			std::cerr << error.what() << " -> skipping " << piledat.seqName() << " " << piledat.position() << "\n";
+			if (runinfo > 0) {
+				std::cerr << "Warning: " << error.what() << " -> skipping " << piledat.seqName() << " " << piledat.position() << "\n";
+			}
 		}
 		catch (const NoDataException& error)
 		{
-			std::cerr << error.what() << " -> skipping site\n";
+			if (runinfo > 0) {
+				std::cerr << "Warning: " << error.what() << " -> skipping site\n";
+			}
 		}
 		// fetch next line
 		getline(indat,line);

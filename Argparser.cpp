@@ -16,6 +16,7 @@ Argparser::Argparser ()
 	  _Qoffset(33),
 	  _minind(1),
 	  _mincov(1),
+	  _runinfo(1),
 	  _printml(0),
 	  _numericGrad(1),
 	  _allow_overwrite(0),
@@ -95,6 +96,14 @@ int Argparser::parseInput (const int c, char** v, const char* version)
 			if (_mincov < 0)
 			{
 				fprintf(stderr, "-mincov must be a positive integer\n");
+				return -1;
+			}
+		}
+		else if (strcmp(v[argPos], "-runinfo") == 0)
+		{
+			_runinfo = atoi(v[argPos+1]);
+			if (_runinfo == 0 || _runinfo == 1 || _runinfo == 2) {} else {
+				fprintf(stderr, "Must use a valid -runinfo argument of 0, 1, or 2\n");
 				return -1;
 			}
 		}
@@ -265,6 +274,8 @@ unsigned int Argparser::mincov () const
 	return _mincov;
 }
 
+int Argparser::runinfo () const {return _runinfo;}
+
 std::string Argparser::infile_name () const
 {
 	return _infile;
@@ -335,6 +346,7 @@ void Argparser::calcLRinfo ()
 	<< "\n" << std::setw(w) << std::left << "-minQ" << std::setw(w) << "<float>" << "Minimum base quality score [" << _minQ << "]"
 	<< "\n" << std::setw(w) << std::left << "-minind" << std::setw(w) << "<int>" << "Minimum number of covered individuals to retain site [" << _minind << "]"
 	<< "\n" << std::setw(w) << std::left << "-mincov" << std::setw(w) << "<int>" << "Minimum number of reads for an individual to be considered 'covered' [" << _mincov << "]"
+	<< "\n" << std::setw(w) << std::left << "-runinfo" << std::setw(w) << "<int>" << "Controls verbosity. 0: suppress all messages, 1: warnings only, 2: print all run information. [" << _runinfo << "]"
 	<< "\n\nOutput by field:"
 	<< "\n(1) sequence ID"
 	<< "\n(2) position in sequence (1-base indexed)"

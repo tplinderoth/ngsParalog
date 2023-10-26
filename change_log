@@ -4,7 +4,8 @@ ngsParalog change log
 Define exception handling class destructors that explicitly do not throw exceptions for compatibility with C++ standards 
 prior to C++11.
 
-Add ' ~AssertStyleException () throw();' to generalUtils.h
-Add 'AssertStyleException::~AssertStyleException () throw() {}' to generalUtils.cpp
-Add '~PileupException () throw();' to parsePileup.h
-Add 'PileupException::~PileupException () throw() {}' to parsePileup.cpp
+Add ' ~AssertStyleException () throw();' to generalUtils.h.
+Add 'AssertStyleException::~AssertStyleException () throw() {}' to generalUtils.cpp.
+Add '~PileupException () throw();' to parsePileup.h.
+Add 'PileupException::~PileupException () throw() {}' to parsePileup.cpp.
+Add runinfo argument to calcLR to control verbosity level for users.
